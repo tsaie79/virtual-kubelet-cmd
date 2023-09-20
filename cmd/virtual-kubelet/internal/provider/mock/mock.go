@@ -155,6 +155,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	if err != nil {
 		return err
 	}
+	p.pods[key] = pod
 
 	now := metav1.NewTime(time.Now())
 	pod.Status = v1.PodStatus{
@@ -192,19 +193,21 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		})
 	}
 	
+
 	// combine the command and args into one string
 	customer_cmd := ""
 	for _, command := range pod.Spec.Containers[0].Command {
 		customer_cmd += command + " "
 	}
-	
+	// before running the command, set the pod status to running
+	pod.Status.Phase = v1.PodRunning
+	pod.Status.Reason = "CmdRunning"
+	pod.Status.Message = "Command is running"
+	// update the pod status
+	p.notifier(pod)
 
 	// run shell command in this shell that hosts the pod
 	_, cmd_err := runCommand(customer_cmd)
-
-
-	p.pods[key] = pod
-	p.notifier(pod)
 
 	//once the command is done, delete the pod
 	if cmd_err == nil {
@@ -270,9 +273,9 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 		pod.Status.ContainerStatuses[idx].Ready = false
 		pod.Status.ContainerStatuses[idx].State = v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				Message:    "Mock provider terminated container upon deletion",
+				Message:    "CMD provider terminated fake container upon deletion",
 				FinishedAt: now,
-				Reason:     "MockProviderPodContainerDeleted",
+				Reason:     "CmdSucceeded",
 				StartedAt:  pod.Status.ContainerStatuses[idx].State.Running.StartedAt,
 			},
 		}
