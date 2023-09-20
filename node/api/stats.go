@@ -20,7 +20,7 @@ import (
 	"net/http"
 
 	"github.com/pkg/errors"
-	"github.com/virtual-kubelet/virtual-kubelet/node/api/statsv1alpha1"
+	"github.com/virtual-kubelet-cmd/node/api/statsv1alpha1"
 )
 
 // PodStatsSummaryHandlerFunc defines the handler for getting pod stats summaries

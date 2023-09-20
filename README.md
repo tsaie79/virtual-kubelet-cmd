@@ -7,4 +7,4 @@ We modified the CreatePod in mock.go to run the shell commands. Users can specif
 
 
 # Reference
-This package is based on Virtual Kubelete - https://github.com/virtual-kubelet/virtual-kubelet.
+This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-cmd.

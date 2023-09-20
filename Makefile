@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 DOCKER_IMAGE := virtual-kubelet
 exec := $(DOCKER_IMAGE)
-github_repo := virtual-kubelet/virtual-kubelet
+github_repo := virtual-kubelet-cmd
 binary := virtual-kubelet
 
 GOTEST ?= go test $(if $V,-v)

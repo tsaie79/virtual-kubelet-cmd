@@ -1,4 +1,4 @@
-module github.com/virtual-kubelet/virtual-kubelet
+module github.com/virtual-kubelet-cmd
 
 go 1.20
 

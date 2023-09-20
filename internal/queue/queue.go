@@ -22,8 +22,8 @@ import (
 	"time"
 
 	pkgerrors "github.com/pkg/errors"
-	"github.com/virtual-kubelet/virtual-kubelet/log"
-	"github.com/virtual-kubelet/virtual-kubelet/trace"
+	"github.com/virtual-kubelet-cmd/log"
+	"github.com/virtual-kubelet-cmd/trace"
 	"golang.org/x/sync/semaphore"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"

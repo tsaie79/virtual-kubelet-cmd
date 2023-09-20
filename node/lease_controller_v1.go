@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/virtual-kubelet/virtual-kubelet/log"
-	"github.com/virtual-kubelet/virtual-kubelet/trace"
+	"github.com/virtual-kubelet-cmd/log"
+	"github.com/virtual-kubelet-cmd/trace"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
