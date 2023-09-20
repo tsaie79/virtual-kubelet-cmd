@@ -200,19 +200,22 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	
 
 	// run shell command in this shell that hosts the pod
-	if customer_cmd != "" {
-		cmd := exec.Command("/bin/sh", "-c", customer_cmd) // add pipeline file to execute the command to the host shell.
-		// cmd := exec.Command("/bin/sh", "-c", "echo", customer_cmd, "> /hostpipe/vk-cmd") # pipline file is vk-cmd
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Run()
-	}
+	_, cmd_err := runCommand(customer_cmd)
+
 
 	p.pods[key] = pod
 	p.notifier(pod)
 
 	//once the command is done, delete the pod
-	p.DeletePod(ctx, pod)
+	if cmd_err == nil {
+		p.DeletePod(ctx, pod)
+	} else {
+		// update the pod status to failed
+		pod.Status.Phase = v1.PodFailed
+		pod.Status.Reason = "CmdFailed"
+		pod.Status.Message = "Command failed to execute"
+		p.notifier(pod)
+	}
 
 	return nil
 }
@@ -260,7 +263,8 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 	now := metav1.Now()
 	delete(p.pods, key)
 	pod.Status.Phase = v1.PodSucceeded
-	pod.Status.Reason = "MockProviderPodDeleted"
+	pod.Status.Reason = "CmdSucceeded"
+	pod.Status.Message = "Command succeeded to execute"
 
 	for idx := range pod.Status.ContainerStatuses {
 		pod.Status.ContainerStatuses[idx].Ready = false
@@ -268,7 +272,7 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 			Terminated: &v1.ContainerStateTerminated{
 				Message:    "Mock provider terminated container upon deletion",
 				FinishedAt: now,
-				Reason:     "CmdCompleted", //"MockProviderPodContainerDeleted",
+				Reason:     "MockProviderPodContainerDeleted",
 				StartedAt:  pod.Status.ContainerStatuses[idx].State.Running.StartedAt,
 			},
 		}
@@ -723,4 +727,14 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 		ctx = span.WithField(ctx, attrs[i], attrs[i+1])
 	}
 	return ctx
+}
+
+//write a function that runs bash command in the host shell and returns the output or error
+func runCommand(command string) (string, error) {
+	cmd := exec.Command("/bin/sh", "-c", command)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
