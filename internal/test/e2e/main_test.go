@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	vke2e "github.com/virtual-kubelet/virtual-kubelet/test/e2e"
+	vke2e "github.com/virtual-kubelet-cmd/test/e2e"
 
 	v1 "k8s.io/api/core/v1"
 )

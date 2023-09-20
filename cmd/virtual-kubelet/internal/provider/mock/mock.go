@@ -14,15 +14,16 @@ import (
 	"runtime"
 
 	dto "github.com/prometheus/client_model/go"
-	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
-	"github.com/virtual-kubelet/virtual-kubelet/log"
-	"github.com/virtual-kubelet/virtual-kubelet/node/api"
-	stats "github.com/virtual-kubelet/virtual-kubelet/node/api/statsv1alpha1"
-	"github.com/virtual-kubelet/virtual-kubelet/trace"
+	"github.com/virtual-kubelet-cmd/errdefs"
+	"github.com/virtual-kubelet-cmd/log"
+	"github.com/virtual-kubelet-cmd/node/api"
+	stats "github.com/virtual-kubelet-cmd/node/api/statsv1alpha1"
+	"github.com/virtual-kubelet-cmd/trace"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
 const (
 	// Provider configuration defaults.
 	defaultCPUCapacity    = "20"
@@ -35,7 +36,7 @@ const (
 	containerNameKey = "containerName"
 )
 
-// See: https://github.com/virtual-kubelet/virtual-kubelet/issues/632
+// See: https://github.com/virtual-kubelet-cmd/issues/632
 /*
 var (
 	_ providers.Provider           = (*MockV0Provider)(nil)
@@ -192,7 +193,6 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 			},
 		})
 	}
-	
 
 	// combine the command and args into one string
 	customer_cmd := ""
@@ -410,9 +410,9 @@ func (p *MockProvider) capacity() v1.ResourceList {
 	podsQ.Set(int64(1))
 
 	rl := v1.ResourceList{
-		"cpu":    cpuQ, //resource.MustParse(p.config.CPU),
-		"memory": memQ, //resource.MustParse(p.config.Memory),
-		"pods": podsQ, //resource.MustParse(p.config.Pods),
+		"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
+		"memory": memQ,  //resource.MustParse(p.config.Memory),
+		"pods":   podsQ, //resource.MustParse(p.config.Pods),
 	}
 	for k, v := range p.config.Others {
 		rl[v1.ResourceName(k)] = resource.MustParse(v)
@@ -732,7 +732,7 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 	return ctx
 }
 
-//write a function that runs bash command in the host shell and returns the output or error
+// write a function that runs bash command in the host shell and returns the output or error
 func runCommand(command string) (string, error) {
 	cmd := exec.Command("/bin/sh", "-c", command)
 	out, err := cmd.Output()
