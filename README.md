@@ -22,5 +22,5 @@ This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-c
 - Create vk-cmd
 ![image](images/create_vk.gif)
 
-- Create pod with BASH commad `touch > ./out.txt`
+- Create pod with BASH commad `touch > ./out.txt` in the `test-run/job_pod_template.yaml`
 ![image](images/create_pod.gif)
