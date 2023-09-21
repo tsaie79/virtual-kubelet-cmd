@@ -17,3 +17,7 @@ vk-cmd: https://github.com/vk-cmd
 
 # Reference
 This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-cmd.
+
+
+# Demo
+![tty](images/tty.gif)
