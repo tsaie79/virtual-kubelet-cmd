@@ -1,0 +1,22 @@
+# write a pod to test the volume
+apiVersion: v1
+kind: Pod
+
+metadata:
+#set name as the JOBNAME
+  name: vk-cmd
+spec:
+  containers:
+  - name: test-shell
+    image: fake
+    command:
+      - "touch ./out.txt"
+
+ 
+  nodeSelector:
+    kubernetes.io/hostname: vk-cmd #JOBNAME
+
+  tolerations:
+  - key: "virtual-kubelet.io/provider"
+    value: "mock"
+    effect: "NoSchedule"
