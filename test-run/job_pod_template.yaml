@@ -10,7 +10,7 @@ spec:
   - name: test-shell
     image: fake
     command:
-      - "touch ./out.txt"
+      - "sleep 100"
 
  
   nodeSelector:
