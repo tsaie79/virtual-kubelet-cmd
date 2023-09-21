@@ -23,7 +23,7 @@ This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-c
 ![image](images/create_vk.gif)
 
 - Create pod with BASH commad `touch > ./out.txt` in the `test-run/job_pod_template.yaml`. The status of pod will be updated to `CmdSucceeded` when the command is completed.
-![image](images/create_pod.gif)
+![image](images/cmd_succeeded.gif)
 
 - Status of pod `CmdRunning` when the command is running
 ![image](images/cmd_running.gif)
