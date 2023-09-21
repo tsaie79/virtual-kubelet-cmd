@@ -19,5 +19,5 @@ vk-cmd: https://github.com/vk-cmd
 This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-cmd.
 
 
-# Demo
+# Demo gif
 ![tty](images/tty.gif)
