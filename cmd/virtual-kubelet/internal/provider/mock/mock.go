@@ -217,7 +217,21 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		pod.Status.Phase = v1.PodFailed
 		pod.Status.Reason = "CmdFailed"
 		pod.Status.Message = "Command failed to execute"
+
+		// update the container status to failed
+		for idx := range pod.Status.ContainerStatuses {
+			pod.Status.ContainerStatuses[idx].Ready = false
+			pod.Status.ContainerStatuses[idx].State = v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{
+					Message:    "CMD provider terminated fake container upon cmd failure",
+					FinishedAt: now,
+					Reason:     "CmdFailed",
+					StartedAt:  pod.Status.ContainerStatuses[idx].State.Running.StartedAt,
+				},
+			}
+		}
 		p.notifier(pod)
+
 	}
 
 	return nil
