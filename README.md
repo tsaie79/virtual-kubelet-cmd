@@ -20,4 +20,3 @@ This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-c
 
 
 # Demo gif
-![tty](images/tty.gif)
