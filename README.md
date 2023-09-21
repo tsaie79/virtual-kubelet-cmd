@@ -19,7 +19,7 @@ vk-cmd: https://github.com/vk-cmd
 This package is based on Virtual Kubelete - https://github.com/virtual-kubelet-cmd.
 
 # Demo 
-- Create vk-cmd
+- Create virtual-kubelet
 ![image](images/create_vk.gif)
 
 - Create pod with BASH commad `touch > ./out.txt` in the `test-run/job_pod_template.yaml`
