@@ -12,7 +12,7 @@ We modified the CreatePod in mock.go to run the shell commands. Users can specif
 - The status of the pod will be updated to `CmdFailed` when the commands do not successfully run. 
     - Note that if using pipeline to run commands on host from container (`echo "cmd on host" > pipeline`), the error from the command string ("cmd on host") will not be reflected here. It will still show `CmdSucceeded`. One has to check the `pipeline.out` for the error message.
 
-# Docker image for virtual-kubelet-cmd
+# Build Docker image for virtual-kubelet-cmd
 vk-cmd: https://github.com/vk-cmd
 
 # Reference
