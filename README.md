@@ -16,7 +16,7 @@ We modified the CreatePod in mock.go to run the shell commands. Users can specif
 vk-cmd: https://github.com/vk-cmd
 
 # Reference
-This package is based on mock provider from Virtual Kubelete - https://github.com/virtual-kubelet/virtual-kubelet.
+This package is based on the mock provider from Virtual Kubelete - https://github.com/virtual-kubelet/virtual-kubelet.
 
 # Demo 
 - Create virtual-kubelet
