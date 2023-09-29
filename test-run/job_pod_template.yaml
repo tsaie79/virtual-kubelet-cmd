@@ -1,21 +1,26 @@
 # write a pod to test the volume
 apiVersion: v1
 kind: Pod
-
 metadata:
 #set name as the JOBNAME
-  name: vk-cmd
+  name: job-name
 spec:
   containers:
   - name: test-shell
     image: fake
     command:
-      - "touch ./out.txt"
-
+      - "ls -l . && sleep 1000 > ~/xx.txt"
+    resources:
+      limits: 
+        cpu: 1 #upper limit
+        # memory: 500Mi
+      requests:
+        cpu: 1 #lower limit
+        # memory: 200Mi
  
+# dont use control-plane node
   nodeSelector:
-    kubernetes.io/hostname: vk-cmd #JOBNAME
-
+    kubernetes.io/role: agent
   tolerations:
   - key: "virtual-kubelet.io/provider"
     value: "mock"
