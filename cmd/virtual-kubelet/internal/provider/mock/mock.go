@@ -417,11 +417,12 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 func (p *MockProvider) capacity() v1.ResourceList {
 
 	var cpuQ resource.Quantity
-	cpuQ.Set(int64(runtime.NumCPU()))
+	// cpuQ.Set(int64(runtime.NumCPU()))
+	cpuQ.Set(int64(1))
 	var memQ resource.Quantity
 	memQ.Set(int64(getSystemTotalMemory()))
 	var podsQ resource.Quantity
-	podsQ.Set(int64(2))
+	podsQ.Set(int64(100))
 
 	rl := v1.ResourceList{
 		"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
