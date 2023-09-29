@@ -417,22 +417,26 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 func (p *MockProvider) capacity() v1.ResourceList {
 
 	var cpuQ resource.Quantity
-	// cpuQ.Set(int64(runtime.NumCPU()))
-	cpuQ.Set(int64(1))
+	cpuQ.Set(int64(runtime.NumCPU()))
 	var memQ resource.Quantity
 	memQ.Set(int64(getSystemTotalMemory()))
-	var podsQ resource.Quantity
-	podsQ.Set(int64(100))
+	// var podsQ resource.Quantity
+	// podsQ.Set(int64(100))
 
-	rl := v1.ResourceList{
-		"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
-		"memory": memQ,  //resource.MustParse(p.config.Memory),
-		"pods":   podsQ, //resource.MustParse(p.config.Pods),
+	// rl := v1.ResourceList{
+	// 	"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
+	// 	"memory": memQ,  //resource.MustParse(p.config.Memory),
+	// 	"pods":   podsQ, //resource.MustParse(p.config.Pods),
+	// }
+	// for k, v := range p.config.Others {
+	// 	rl[v1.ResourceName(k)] = resource.MustParse(v)
+	// }
+	// return rl
+	return v1.ResourceList{
+		"cpu":    cpuQ,
+		"memory": memQ,
+		"pods":   resource.MustParse("1000"),
 	}
-	for k, v := range p.config.Others {
-		rl[v1.ResourceName(k)] = resource.MustParse(v)
-	}
-	return rl
 }
 
 // NodeConditions returns a list of conditions (Ready, OutOfDisk, etc), for updates to the node status
