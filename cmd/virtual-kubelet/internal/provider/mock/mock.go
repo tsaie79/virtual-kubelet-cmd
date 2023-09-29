@@ -421,7 +421,7 @@ func (p *MockProvider) capacity() v1.ResourceList {
 	var memQ resource.Quantity
 	memQ.Set(int64(getSystemTotalMemory()))
 	var podsQ resource.Quantity
-	podsQ.Set(int64(100))
+	podsQ.Set(int64(2))
 
 	rl := v1.ResourceList{
 		"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
@@ -623,7 +623,7 @@ func (p *MockProvider) generateMockMetrics(metricsMap map[string][]*dto.Metric, 
 	} else {
 		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
 	}
-
+ 
 	return metricsMap
 }
 
