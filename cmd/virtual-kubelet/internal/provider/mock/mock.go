@@ -421,7 +421,7 @@ func (p *MockProvider) capacity() v1.ResourceList {
 	var memQ resource.Quantity
 	memQ.Set(int64(getSystemTotalMemory()))
 	var podsQ resource.Quantity
-	podsQ.Set(int64(1))
+	podsQ.Set(int64(110))
 
 	rl := v1.ResourceList{
 		"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
