@@ -13,10 +13,10 @@ We modified the CreatePod in mock.go to run the shell commands. Users can specif
     - Note that if using pipeline to run commands on host from container (`echo "cmd on host" > pipeline`), the error from the command string ("cmd on host") will not be reflected here. It will still show `CmdSucceeded`. One has to check the `pipeline.out` for the error message.
 
 # Build Docker image for virtual-kubelet-cmd
-vk-cmd: https://github.com/tsaie79/vk-cmd
+Git repo: [vk-cmd](https://github.com/tsaie79/vk-cmd)
 
 # Reference
-This package is based on the mock provider from Virtual Kubelete - https://github.com/virtual-kubelet/virtual-kubelet.
+This package is based on the mock provider from [Virtual Kubelete](https://github.com/virtual-kubelet/virtual-kubelet).
 
 # Demo 
 - Create virtual-kubelet
