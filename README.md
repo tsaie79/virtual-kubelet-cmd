@@ -14,8 +14,6 @@ The status of the pod will be updated based on the status of the command that is
 # Run virtual-kubelet-cmd in a Docker container
 It is recommanded to run virtual-kubelet-cmd in a Docker container. To build the Docker image, please check the Github repository: [vk-cmd](https://github.com/tsaie79/vk-cmd).
 
-
-
 # Demo 
 
 This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the demonstrations:
