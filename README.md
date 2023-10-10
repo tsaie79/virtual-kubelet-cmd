@@ -17,22 +17,25 @@ Git repo: [vk-cmd](https://github.com/tsaie79/vk-cmd)
 
 # Demo 
 
-- Create virtual-kubelet
+This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the steps:
+
+- Create a virtual-kubelet instance.
 
 ![image](images/create_vk.gif)
 
-- Create pod with shell command `touch > ./out.txt` in the `test-run/job_pod_template.yaml`. The status of the pod will be updated to `CmdSucceeded` when the command is completed.
+- Create a pod with a shell command that writes to a file called `out.txt`. The command is specified in the `spec:containers[0]:command` field of the `test-run/job_pod_template.yaml` file. The pod status will be updated to `CmdSucceeded` when the command is completed successfully.
 
 ![image](images/cmd_succeeded.gif)
 
-- Pod status `CmdRunning` when the command is running
+- Check the pod status while the command is running. The pod status will be updated to `CmdRunning`.
 
 ![image](images/cmd_running.gif)
 
-- Pod status `CmdFailed` when the command is not valid
+- Check the pod status when the command fails to run successfully. The pod status will be updated to `CmdFailed`.
 
 ![image](images/cmd_failed.gif)
 
 
 # References
-This package is based on the mock provider of [Virtual Kubelet](https://github.com/virtual-kubelet/virtual-kubelet).
+
+This package is based on the mock provider of [Virtual Kubelet](https://github.com/virtual-kubelet/virtual-kubelet), a Kubernetes kubelet implementation that masquerades as a kubelet running on a node. The mock provider is a type of Virtual Kubelet that can be used for testing and development purposes.
