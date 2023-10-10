@@ -3,7 +3,7 @@
 
 This provider is a type of Virtual Kubelet that translates Kubernetes commands into BASH shell commands that can be run on the host. Instead of running a container, it runs shell commands directly on the host. This provider is based on the Virtual Kubelet (vk-mock) and is designed to run on resources where the container runtime is not directly accessible. We modified the `CreatePod` function in `mock.go` to execute the shell commands specified in the pod spec. Users can specify these commands in the pod spec, and they will be executed on the host shell.
 
-# Pod Status
+## Pod Status
 
 The status of the pod will be updated based on the status of the command that is executed. Here are the possible statuses:
 
@@ -11,10 +11,10 @@ The status of the pod will be updated based on the status of the command that is
 - `CmdRunning`: The pod has been created, and the command is currently running.
 - `CmdFailed`: The command has failed to run successfully. If you are using a UNIX pipe to run commands on the host from the container (e.g., `echo "cmd on host" > pipeline`), any errors from the command string ("cmd on host") will not be reflected in the pod status. Instead, you will need to check the `pipeline.out` file for the error message.
 
-# Run virtual-kubelet-cmd in a Docker container
+## Run virtual-kubelet-cmd in a Docker container
 It is recommanded to run virtual-kubelet-cmd in a Docker container. To build the Docker image, please check the Github repository: [vk-cmd](https://github.com/tsaie79/vk-cmd).
 
-# Demo 
+## Demo 
 
 This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the demonstrations:
 
@@ -35,6 +35,6 @@ This demo shows how to use virtual-kubelet-cmd to run shell commands directly on
 ![image](images/cmd_failed.gif)
 
 
-# References
+## References
 
 This package is based on the mock provider of [Virtual Kubelet](https://github.com/virtual-kubelet/virtual-kubelet), a Kubernetes kubelet implementation that masquerades as a kubelet running on a node. The mock provider is a type of Virtual Kubelet that can be used for testing and development purposes.
