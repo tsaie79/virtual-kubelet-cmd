@@ -11,19 +11,20 @@ The status of the pod will be updated based on the status of the command that is
 - `CmdRunning`: The pod has been created, and the command is currently running.
 - `CmdFailed`: The command has failed to run successfully. If you are using a UNIX pipe to run commands on the host from the container (e.g., `echo "cmd on host" > pipeline`), any errors from the command string ("cmd on host") will not be reflected in the pod status. Instead, you will need to check the `pipeline.out` file for the error message.
 
-# Build Docker image for virtual-kubelet-cmd
+# Run virtual-kubelet-cmd in a Docker container
+It is recommanded to run virtual-kubelet-cmd in a Docker container. To build the Docker image, please check the Github repository: [vk-cmd](https://github.com/tsaie79/vk-cmd).
 
-Git repo: [vk-cmd](https://github.com/tsaie79/vk-cmd)
+
 
 # Demo 
 
-This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the steps:
+This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the demonstrations:
 
 - Create a virtual-kubelet instance by running `make build` and go to `test-run` directory. Run `sh start.sh` to start the virtual-kubelet instance.
 
 ![image](images/create_vk.gif)
 
-- Create a pod with a shell command that writes to a file called `out.txt`. The command is specified in the `spec:containers[0]:command` field of the `test-run/job_pod_template.yaml` file. The pod status will be updated to `CmdSucceeded` when the command is completed successfully.
+- Create a pod with a shell command. The command is specified in the `spec:containers[0]:command` field of the `test-run/job_pod_template.yaml` file. The pod status will be updated to `CmdSucceeded` when the command is completed successfully.
 
 ![image](images/cmd_succeeded.gif)
 
