@@ -1,0 +1,3 @@
+*.crt
+*.key
+test-run/apiserver/config
