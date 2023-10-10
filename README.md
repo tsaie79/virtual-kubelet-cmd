@@ -19,7 +19,7 @@ Git repo: [vk-cmd](https://github.com/tsaie79/vk-cmd)
 
 This demo shows how to use virtual-kubelet-cmd to run shell commands directly on the host. Here are the steps:
 
-- Create a virtual-kubelet instance.
+- Create a virtual-kubelet instance by running `make build` and go to `test-run` directory. Run `sh start.sh` to start the virtual-kubelet instance.
 
 ![image](images/create_vk.gif)
 
