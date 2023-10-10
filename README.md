@@ -1,7 +1,7 @@
 
-# Introduction
+# BASH Shell Command Provider for Virtual Kubelet
 
-This provider is a type of Virtual Kubelet that translates Kubernetes commands into shell commands that can be run on the host. Instead of running a container, it runs shell commands directly on the host. This provider is based on the Virtual Kubelet (vk-mock) and is designed to run on resources where the container runtime is not directly accessible. We modified the `CreatePod` function in `mock.go` to execute the shell commands specified in the pod spec. Users can specify these commands in the pod spec, and they will be executed on the host shell.
+This provider is a type of Virtual Kubelet that translates Kubernetes commands into BASH shell commands that can be run on the host. Instead of running a container, it runs shell commands directly on the host. This provider is based on the Virtual Kubelet (vk-mock) and is designed to run on resources where the container runtime is not directly accessible. We modified the `CreatePod` function in `mock.go` to execute the shell commands specified in the pod spec. Users can specify these commands in the pod spec, and they will be executed on the host shell.
 
 # Pod Status
 
