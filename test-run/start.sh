@@ -12,4 +12,4 @@ export NODENAME="vk-mac"
 
 echo "{\"$NODENAME\": {\"cpu\": \"0\", \"memory\": \"0Gi\", \"pods\": \"0\"}}" > $HOME/.host-cfg.json
 
-"$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --provider-config $HOME/.host-cfg.json --namespace docker --log-level debug --klog.v 3 > ./vk.log 2>&1 
+"$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --provider-config $HOME/.host-cfg.json --log-level debug --klog.v 3 > ./vk.log 2>&1 
