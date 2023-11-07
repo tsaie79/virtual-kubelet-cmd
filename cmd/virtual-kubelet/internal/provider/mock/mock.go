@@ -766,8 +766,7 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 // write a function that runs bash command in the host shell and returns the output or error
 func runCommand(command string) (string, error) {
 	// setsid is used to run the command in a new session 
-	cmd := exec.Command("/bin/sh", "-c", command)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd := exec.Command("/bin/sh", "-c setsid", command)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
