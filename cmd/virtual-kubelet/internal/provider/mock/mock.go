@@ -752,8 +752,19 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 }
 
 // write a function that runs bash command in the host shell and returns the output or error
+// func runCommand(command string) (string, error) {
+// 	cmd := exec.Command("/bin/sh", "-c", command)
+// 	out, err := cmd.Output()
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return string(out), nil
+// }
+
+// write a function that runs bash command in the host shell and returns the output or error
 func runCommand(command string) (string, error) {
-	cmd := exec.Command("/bin/sh", "-c", command)
+	// setsid is used to run the command in a new session 
+	cmd := exec.Command("/bin/sh", "-c", "setsid "+command)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
