@@ -81,6 +81,7 @@ require (
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
+	github.com/virtual-kubelet/virtual-kubelet v1.10.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.7 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.7 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.7 // indirect
