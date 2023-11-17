@@ -21,7 +21,7 @@
 	],
 	
 	"mounts": [
-		"source=${localEnv:HOME}/.kube,target=/home/vscode/kube_config,type=bind,consistency=cached",
+		"source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached",
 	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
