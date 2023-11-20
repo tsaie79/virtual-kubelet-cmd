@@ -28,6 +28,8 @@ import (
 	syscall "golang.org/x/sys/unix"
 	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
 
+	"github.com/pkg/errors"
+
 )
 
 const (
@@ -218,10 +220,12 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		return err
 	}
 
-	uid, gid, err := uidGidFromSecurityContext(pod, 0)
-	if err != nil {
-		return err
-	}
+	// uid, gid, err := uidGidFromSecurityContext(pod, 0)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// tmpfs := strings.Join([]string{"/var", "/run"}, " ")
 
 	bindmounts := []string{}
 	bindmountsro := []string{}
@@ -248,62 +252,40 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 
-			uf = uf.Insert("Service", "TemporaryFileSystem", tmpfs)
-		if len(rwpaths) > 0 {
-			paths := strings.Join(rwpaths, " ")
-			uf = uf.Insert("Service", "ReadWritePaths", paths)
-		}
-		if len(bindmounts) > 0 {
-			mount := strings.Join(bindmounts, " ")
-			uf = uf.Insert("Service", "BindPaths", mount)
-		}
-		if len(bindmountsro) > 0 {
-			romount := strings.Join(bindmountsro, " ")
-			uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
-		}
+	// write file
 
-		for _, del := range deleteOptions {
-			uf = uf.Delete("Service", del)
-		}
+	// uf, err := p.unitfileFromPackageOrSynthesized(c)
 
-		envVars := p.defaultEnvironment()
-		for _, env := range c.Env {
-			// If environment variable is a string with spaces, it must be quoted.
-			// Quoting seems innocuous to other strings so it's set by default.
-			envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
-		}
-		for _, env := range envVars {
-			uf = uf.Insert("Service", "Environment", env)
-		}
+	// uf = uf.Insert("Service", "TemporaryFileSystem", tmpfs)
+	if len(rwpaths) > 0 {
+		paths := strings.Join(rwpaths, " ")
+		
 
+		// uf = uf.Insert("Service", "ReadWritePaths", paths)
+	}
+	if len(bindmounts) > 0 {
+		mount := strings.Join(bindmounts, " ")
+		uf = uf.Insert("Service", "BindPaths", mount)
+	}
+	if len(bindmountsro) > 0 {
+		romount := strings.Join(bindmountsro, " ")
+		uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
+	}
 
-		uf = uf.Insert("Service", "TemporaryFileSystem", tmpfs)
-		if len(rwpaths) > 0 {
-			paths := strings.Join(rwpaths, " ")
-			uf = uf.Insert("Service", "ReadWritePaths", paths)
-		}
-		if len(bindmounts) > 0 {
-			mount := strings.Join(bindmounts, " ")
-			uf = uf.Insert("Service", "BindPaths", mount)
-		}
-		if len(bindmountsro) > 0 {
-			romount := strings.Join(bindmountsro, " ")
-			uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
-		}
+	for _, del := range deleteOptions {
+		uf = uf.Delete("Service", del)
+	}
 
-		for _, del := range deleteOptions {
-			uf = uf.Delete("Service", del)
-		}
+	envVars := p.defaultEnvironment()
+	for _, env := range c.Env {
+		// If environment variable is a string with spaces, it must be quoted.
+		// Quoting seems innocuous to other strings so it's set by default.
+		envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
+	}
+	for _, env := range envVars {
+		uf = uf.Insert("Service", "Environment", env)
+	}
 
-		envVars := p.defaultEnvironment()
-		for _, env := range c.Env {
-			// If environment variable is a string with spaces, it must be quoted.
-			// Quoting seems innocuous to other strings so it's set by default.
-			envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
-		}
-		for _, env := range envVars {
-			uf = uf.Insert("Service", "Environment", env)
-		}
 
 
 
