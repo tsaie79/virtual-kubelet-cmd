@@ -1,8 +1,9 @@
 #!/bin/bash
 
-export VK_PATH="/Users/jeng-yuantsai/Research/jlab/jiriaf/vk/virtual-kubelet-cmd/test-run/apiserver"
-export VK_BIN="/Users/jeng-yuantsai/Research/jlab/jiriaf/vk/virtual-kubelet-cmd/bin"
-export KUBECONFIG="$VK_PATH/config"
+export MAIN="/workspaces/commands-same-sid"
+export VK_PATH="$MAIN/test-run/apiserver"
+export VK_BIN="$MAIN/bin"
+export KUBECONFIG="$HOME/.kube/config"
 export VKUBELET_POD_IP="10.250.64.71"
 export APISERVER_CERT_LOCATION="$VK_PATH/client.crt"
 export APISERVER_KEY_LOCATION="$VK_PATH/client.key"
