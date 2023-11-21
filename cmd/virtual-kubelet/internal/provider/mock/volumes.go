@@ -165,14 +165,14 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				switch {
 				case source.ServiceAccountToken != nil:
 					// This is still stored in a secret, hence the dance to figure out what secret.
-					secret, err := p.rm.GetSecret(v.Secret.SecretName, pod.Namespace)
-					secrets, err := p.podResourceManager.SecretLister().Secrets(pod.Namespace).List(labels.Everything())
+					// secrets, err := p.podResourceManager.SecretLister().Secrets(pod.Namespace).List(labels.Everything())
+					secrets, err := p.rm.ListSecrets(pod.Namespace)
 					if err != nil {
 						return nil, err
 					}
 				Secrets:
 					for _, secret := range secrets {
-						if secret.Type != corev1.SecretTypeServiceAccountToken {
+						if secret.Type != v1.SecretTypeServiceAccountToken {
 							continue
 						}
 						// annotation now needs to match the pod.ServiceAccountName
@@ -180,7 +180,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 							if k == "kubernetes.io/service-account.name" && a == pod.Spec.ServiceAccountName {
 								// this is the secret we're after. Now the projected service account has a path element, which is the only path
 								// we want from this secret, but it could still be in StringData or Data
-								dir, err := p.setupPaths(pod, secretDir, i)
+								dir, err := setupPaths(pod, secretDir, i)
 								if err != nil {
 									return nil, err
 								}
@@ -207,7 +207,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 					}
 
 				case source.Secret != nil:
-					secret, err := p.podResourceManager.SecretLister().Secrets(pod.Namespace).Get(source.Secret.Name)
+					secret, err := p.rm.GetSecret(source.Secret.Name, pod.Namespace)
 					if source.Secret.Optional != nil && !*source.Secret.Optional && errors.IsNotFound(err) {
 						return nil, fmt.Errorf("projected secret %s is required by pod %s and does not exist", source.Secret.Name, pod.Name)
 					}
@@ -215,7 +215,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 						continue
 					}
 
-					dir, err := p.setupPaths(pod, secretDir, i)
+					dir, err := setupPaths(pod, secretDir, i)
 					if err != nil {
 						return nil, err
 					}
@@ -244,7 +244,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 					vol[v.Name] = dir
 
 				case source.ConfigMap != nil:
-					configMap, err := p.podResourceManager.ConfigMapLister().ConfigMaps(pod.Namespace).Get(source.ConfigMap.Name)
+					configMap, err := p.rm.GetConfigMap(source.ConfigMap.Name, pod.Namespace)
 					if source.ConfigMap.Optional != nil && !*source.ConfigMap.Optional && errors.IsNotFound(err) {
 						return nil, fmt.Errorf("projected configMap %s is required by pod %s and does not exist", source.ConfigMap.Name, pod.Name)
 					}
@@ -252,7 +252,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 						continue
 					}
 
-					dir, err := p.setupPaths(pod, configmapDir, i)
+					dir, err := setupPaths(pod, configmapDir, i)
 					if err != nil {
 						return nil, err
 					}
