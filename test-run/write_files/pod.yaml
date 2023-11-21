@@ -2,34 +2,28 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: "myapp"
-  namespace: default
-  labels:
-    app: "myapp"
+  name: write-pod
 spec:
   containers:
-  - name: myapp
-    image: "debian-slim:latest"
-    resources:
-      limits:
-        cpu: 200m
-        memory: 500Mi
-      requests:
-        cpu: 100m
-        memory: 200Mi
-    env:
-    - name: DB_HOST
-      valueFrom:
-        configMapKeyRef:
-          name: myapp
-          key: DB_HOST
+  - name: test-write-file
+    image: fake
+    command:
+      - "ls -l .  > ~/test.txt && sleep 1000"
     volumeMounts:
-    - name: localtime
-      mountPath: /etc/localtime
+    - name: write-file
+      mountPath: /workspaces/add-volume/test-run/write_files
   volumes:
-    - name: localtime
+    - name: write-file
       configMap:
-        name: myconfig-write-file
+        name:  myconfig-write-file
 
-  restartPolicy: Always
+        
+  nodeSelector:
+    kubernetes.io/role: agent
+  tolerations:
+  - key: "virtual-kubelet.io/provider"
+    value: "mock"
+    effect: "NoSchedule"
+
+
 ---
