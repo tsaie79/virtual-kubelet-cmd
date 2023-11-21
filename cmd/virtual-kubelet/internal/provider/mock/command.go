@@ -71,7 +71,7 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 				if strings.HasSuffix(f.Name(), ".sh") {
 					script := path.Join(workdir, f.Name())
 					log.G(ctx).Infof("running bash script %s", script)
-					// run the bash script parallelly, don't wait for it to finish before running the next one 
+
 					cmd := exec.CommandContext(ctx, "bash", script)
 					err := cmd.Run()
 
@@ -111,6 +111,9 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 							},
 						},
 					})
+					
+					sleep := time.Duration(10) * time.Second
+					time.Sleep(sleep)
 				}
 			}
 		}
