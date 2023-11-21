@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export MAIN="/workspaces/commands-same-sid"
+export MAIN="/workspaces/add-volume"
 export VK_PATH="$MAIN/test-run/apiserver"
 export VK_BIN="$MAIN/bin"
 export KUBECONFIG="$HOME/.kube/config"
