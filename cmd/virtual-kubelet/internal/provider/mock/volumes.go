@@ -3,20 +3,23 @@ package mock
 import (
 	"encoding/base64"
 	"fmt"
+	// "hash/fnv"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
+	// "github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
 	vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
+	// "k8s.io/apimachinery/pkg/labels"
 )
 
+
+var varrun = os.Getenv("HOME")
+
 const (
-	varrun       = "/var/run"
 	emptyDir     = "emptydirs"
 	secretDir    = "secrets"
 	configmapDir = "configmaps"
@@ -38,9 +41,9 @@ const (
 // should be used for this. The on-disk structure is prepared and can be used.
 // which considered what volumes should be setup. Defaults to volumeAll
 func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, error) {
-	type pwatch struct {
-		podResourceManager kubernetes.PodResourceManager
-	}
+	// type pwatch struct {
+	// 	podResourceManager kubernetes.PodResourceManager
+	// }
 
 	var log = vklogv2.New(nil)
 	fnlog := log.
@@ -49,13 +52,17 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 
 
 	vol := make(map[string]string)
+	fnlog.Infof("inspecting volumes for pod %s", pod.Name)
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
+	fnlog.Infof("uid: %s, gid: %s", uid, gid)
+
 
 	if err != nil {
 		return nil, err
 	}
 	for i, v := range pod.Spec.Volumes {
-		fnlog.Debugf("looking at volume %q#%d", v.Name, i)
+		fnlog.Infof("inspecting volume %s", v.Name)
+
 		switch {
 		case v.HostPath != nil:
 			if which != volumeAll {
@@ -81,7 +88,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				continue
 			}
 			
-			secret, err := p.podResourceManager.SecretLister().Secrets(pod.Namespace).Get(v.Secret.SecretName)
+			secret, err := p.rm.GetSecret(v.Secret.SecretName, pod.Namespace)
 			if v.Secret.Optional != nil && !*v.Secret.Optional && errors.IsNotFound(err) {
 				return nil, fmt.Errorf("secret %s is required by pod %s and does not exist", v.Secret.SecretName, pod.Name)
 			}
@@ -115,7 +122,8 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 			if which != volumeAll && which != volumeConfigMap {
 				continue
 			}
-			configMap, err := p.podResourceManager.ConfigMapLister().ConfigMaps(pod.Namespace).Get(v.ConfigMap.Name)
+			fnlog.Infof("inspecting configMap %s", v.ConfigMap.Name)
+			configMap, err := p.rm.GetConfigMap(v.ConfigMap.Name, pod.Namespace)
 			if v.ConfigMap.Optional != nil && !*v.ConfigMap.Optional && errors.IsNotFound(err) {
 				return nil, fmt.Errorf("configMap %s is required by pod %s and does not exist", v.ConfigMap.Name, pod.Name)
 			}
@@ -123,12 +131,23 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				continue
 			}
 
-			dir, err := setupPaths(pod, configmapDir, i)
-			if err != nil {
-				return nil, err
+			// dir, err := setupPaths(pod, configmapDir, i)
+			var dir string
+			for _, c := range pod.Spec.Containers{
+				for _, vol_mount := range c.VolumeMounts{
+					if v.Name == vol_mount.Name{
+						dir, err = setupPaths(pod, vol_mount.MountPath, i)
+						fnlog.Infof("setupPaths: %s", dir)
+						if err != nil {
+							fnlog.Info("setupPaths error %s", err)
+							return nil, err
+						}
+					}
+				}
 			}
-			fnlog.Debugf("created %q for configmap %q", dir, v.Name)
 
+			fnlog.Debugf("created %q for configmap %q", dir, v.Name)
+			
 			for k, v := range configMap.Data {
 				if err := writeFile(dir, k, uid, gid, []byte(v)); err != nil {
 					return nil, err
@@ -146,13 +165,14 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				switch {
 				case source.ServiceAccountToken != nil:
 					// This is still stored in a secret, hence the dance to figure out what secret.
+					secret, err := p.rm.GetSecret(v.Secret.SecretName, pod.Namespace)
 					secrets, err := p.podResourceManager.SecretLister().Secrets(pod.Namespace).List(labels.Everything())
 					if err != nil {
 						return nil, err
 					}
 				Secrets:
 					for _, secret := range secrets {
-						if secret.Type != v1.SecretTypeServiceAccountToken {
+						if secret.Type != corev1.SecretTypeServiceAccountToken {
 							continue
 						}
 						// annotation now needs to match the pod.ServiceAccountName
@@ -160,7 +180,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 							if k == "kubernetes.io/service-account.name" && a == pod.Spec.ServiceAccountName {
 								// this is the secret we're after. Now the projected service account has a path element, which is the only path
 								// we want from this secret, but it could still be in StringData or Data
-								dir, err := setupPaths(pod, secretDir, i)
+								dir, err := p.setupPaths(pod, secretDir, i)
 								if err != nil {
 									return nil, err
 								}
@@ -195,7 +215,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 						continue
 					}
 
-					dir, err := setupPaths(pod, secretDir, i)
+					dir, err := p.setupPaths(pod, secretDir, i)
 					if err != nil {
 						return nil, err
 					}
@@ -232,7 +252,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 						continue
 					}
 
-					dir, err := setupPaths(pod, configmapDir, i)
+					dir, err := p.setupPaths(pod, configmapDir, i)
 					if err != nil {
 						return nil, err
 					}
@@ -258,6 +278,8 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 
 				}
 			}
+
+
 
 		default:
 			return nil, fmt.Errorf("pod %s requires volume %s which is of an unsupported type", pod.Name, v.Name)
@@ -339,10 +361,10 @@ func setupPaths(pod *v1.Pod, path string, i int) (string, error) {
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
 	}
-	dir = filepath.Join(dir, fmt.Sprintf("#%d", i))
-	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
-		return "", err
-	}
+	// dir = filepath.Join(dir, fmt.Sprintf("#%d", i))
+	// if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
+	// 	return "", err
+	// }
 	return dir, nil
 }
 
