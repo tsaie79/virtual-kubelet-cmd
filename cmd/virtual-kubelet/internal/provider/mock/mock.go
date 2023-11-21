@@ -192,153 +192,52 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		},
 	}
 
-	for _, container := range pod.Spec.Containers {
-		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-			Name:         container.Name,
-			Image:        container.Image,
-			Ready:        true,
-			RestartCount: 0,
-			State: v1.ContainerState{
-				Running: &v1.ContainerStateRunning{
-					StartedAt: now,
-				},
-			},
-		})
-	}
 
-
-	// add volume mounts 
-	// var log = vklogv2.New(nil)
-
-	// fnlog := log.
-	// 	WithField("podNamespace", pod.Namespace).
-	// 	WithField("podName", pod.Name)
-
-	// fnlog.Info("CreatePod called")
-
-
+	// update the pod status to pending
+	pod.Status.Phase = v1.PodPending
+	pod.Status.Reason = "VolumePending"
+	pod.Status.Message = "Volume is pending"
+	// update the pod status
+	p.notifier(pod)
+	// add volume mounts to the pod 
 	vol, err := p.volumes(pod, volumeAll)
 	if err != nil {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
-		// err = errors.Wrap(err, "failed to process Pod volumes")
-		// fnlog.Error(err)
-		return err
+		//update pod status to failed
+		pod.Status.Phase = v1.PodFailed
+		pod.Status.Reason = "VolumeFailed"
+		pod.Status.Message = "Failed to process Pod volumes"
+		// update the pod status
+		p.notifier(pod)
 	}
 
-	// uid, gid, err := uidGidFromSecurityContext(pod, 0)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// tmpfs := strings.Join([]string{"/var", "/run"}, " ")
-
-	bindmounts := []string{}
-	bindmountsro := []string{}
-	rwpaths := []string{}
-	c := pod.Spec.Containers[0]
-	for _, v := range c.VolumeMounts {
-		dir, ok := vol[v.Name]
-		if !ok {
-			// fnlog.Warnf("failed to find volumeMount %s in the specific volumes, skipping", v.Name)
-			log.G(ctx).Infof("failed to find volumeMount %s in the specific volumes, skipping\n", v.Name)
-			continue
-		}
-
-		if v.ReadOnly {
-			bindmountsro = append(bindmountsro, fmt.Sprintf("%s:%s", dir, v.MountPath)) // SubPath, look at todo, filepath.Join?
-			log.G(ctx).Infof("bindmountsro: %s\n", bindmountsro)
-			continue
-		}
-		rwpaths = append(rwpaths, v.MountPath)
-		if dir == "" { // hostPath
-			continue
-		}
-		bindmounts = append(bindmounts, fmt.Sprintf("%s:%s", dir, v.MountPath)) // SubPath, look at todo, filepath.Join?
-		// OK, so the v.MountPath will _exist_ on the system, as systemd will create it, permissions should not matter, as we
-		// only need this "hook" to mount the bindmount.
-		log.G(ctx).Infof("bindmounts: %s\n", bindmounts)
-	}
-
-
-	// write file
-
-	// uf, err := p.unitfileFromPackageOrSynthesized(c)
-
-	// uf = uf.Insert("Service", "TemporaryFileSystem", tmpfs)
-
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// if len(rwpaths) > 0 {
-	// 	paths := strings.Join(rwpaths, " ")
-		
-
-	// 	// uf = uf.Insert("Service", "ReadWritePaths", paths)
-	// }
-	// if len(bindmounts) > 0 {
-	// 	mount := strings.Join(bindmounts, " ")
-	// 	uf = uf.Insert("Service", "BindPaths", mount)
-	// }
-	// if len(bindmountsro) > 0 {
-	// 	romount := strings.Join(bindmountsro, " ")
-	// 	uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
-	// }
-
-	// for _, del := range deleteOptions {
-	// 	uf = uf.Delete("Service", del)
-	// }
-
-	// envVars := p.defaultEnvironment()
-	// for _, env := range c.Env {
-	// 	// If environment variable is a string with spaces, it must be quoted.
-	// 	// Quoting seems innocuous to other strings so it's set by default.
-	// 	envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
-	// }
-	// for _, env := range envVars {
-	// 	uf = uf.Insert("Service", "Environment", env)
-	// }
-// !!!!!!!!!!!!!!!!!!!!!
-
-
-
-	// combine the command and args into one string
-	customer_cmd := ""
-	for _, command := range pod.Spec.Containers[0].Command {
-		customer_cmd += command + " "
-	}
-	// before running the command, set the pod status to running
+	//update pod status to running
 	pod.Status.Phase = v1.PodRunning
 	pod.Status.Reason = "CmdRunning"
 	pod.Status.Message = "Command is running"
 	// update the pod status
 	p.notifier(pod)
 
-	// run shell command in this shell that hosts the pod
-	_, cmd_err := runCommand(customer_cmd)
+	// run the bash script in the pod
+	p.runBashScript(ctx, pod, vol)
 
-	//once the command is done, delete the pod
-	if cmd_err == nil {
-		p.DeletePod(ctx, pod)
-	} else {
-		// update the pod status to failed
-		pod.Status.Phase = v1.PodFailed
-		pod.Status.Reason = "CmdFailed"
-		pod.Status.Message = "Command failed to execute"
-
-		// update the container status to failed
-		for idx := range pod.Status.ContainerStatuses {
-			pod.Status.ContainerStatuses[idx].Ready = false
-			pod.Status.ContainerStatuses[idx].State = v1.ContainerState{
-				Terminated: &v1.ContainerStateTerminated{
-					Message:    "CMD provider terminated fake container upon cmd failure",
-					FinishedAt: now,
-					Reason:     "CmdFailed",
-					StartedAt:  pod.Status.ContainerStatuses[idx].State.Running.StartedAt,
-				},
-			}
+	// update the pod status to success if there are no failed containers
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Terminated.Reason != "CmdSucceeded" {
+			pod.Status.Phase = v1.PodFailed
+			pod.Status.Reason = "CmdFailed"
+			pod.Status.Message = "Command failed to execute"
+			//update the pod status
+			p.notifier(pod)
+			return nil
 		}
-		p.notifier(pod)
-
 	}
 
+	pod.Status.Phase = v1.PodSucceeded
+	pod.Status.Reason = "CmdSucceeded"
+	pod.Status.Message = "Command succeeded to execute"
+	//update the pod status
+	p.notifier(pod)
 	return nil
 }
 
