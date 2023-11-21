@@ -5,6 +5,7 @@ metadata:
   name: myconfig-write-file
   namespace: default
 data:
-  file1: |
-    This is the content of file1
+  #key value pairs
+  config-write-file.txt: |
+    This is a test file
 ---
