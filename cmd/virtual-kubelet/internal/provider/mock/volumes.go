@@ -60,9 +60,9 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 	if err != nil {
 		return nil, err
 	}
-	for i, v := range pod.Spec.Volumes {
+	for _, v := range pod.Spec.Volumes {
 		fnlog.Infof("inspecting volume %s", v.Name)
-
+		i := v.Name
 		switch {
 		// case v.HostPath != nil:
 		// 	if which != volumeAll {
@@ -354,7 +354,7 @@ func cleanPodEphemeralVolumes(podId string) error {
 	return os.RemoveAll(podEphemeralVolumes)
 }
 
-func setupPaths(pod *v1.Pod, path string, i int) (string, error) {
+func setupPaths(pod *v1.Pod, path string, s string) (string, error) {
 	// id := string(pod.ObjectMeta.UID)
 	id := pod.Name
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
@@ -366,7 +366,7 @@ func setupPaths(pod *v1.Pod, path string, i int) (string, error) {
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
 	}	
-	dir = filepath.Join(dir, fmt.Sprintf("volume_%d", i))
+	dir = filepath.Join(dir, s)
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
 	}
