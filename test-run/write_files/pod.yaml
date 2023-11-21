@@ -1,21 +1,57 @@
+# https://kubernetes.io/docs/concepts/configuration/configmap/
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: user1
+  namespace: default
+data:
+  #key value pairs
+  hello.sh: |
+    #!/bin/bash
+    echo "Hello World" > ~/test1.txt && sleep 10
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: user2
+  namespace: default
+data:
+  #key value pairs
+  good.sh: |
+    #!/bin/bash
+    echo "I am good" > ~/test2.txt && sleep 60
+
+---
+
 # https://kubernetes.io/docs/concepts/workloads/pods/
 apiVersion: v1
 kind: Pod
 metadata:
-  name: write-pod
+  name: multijobs
 spec:
   containers:
-  - name: test-write-file
-    image: fake
-    command:
-      - "ls -l .  > ~/test.txt && sleep 60"
+  - name: job-user1
+    image: user1
+    command: [""]
     volumeMounts:
-    - name: write-file
-      mountPath: /workspaces/add-volume/test-run/write_files
+    - name: user1
+      mountPath: "/var/run"
+
+  - name: job-user2
+    image: user2
+    command: [""]
+    volumeMounts:
+    - name: user2
+      mountPath: "/var/run"
+
   volumes:
-    - name: write-file
+    - name: user1
       configMap:
-        name:  myconfig-write-file
+        name:  user1
+
+    - name: user2
+      configMap:
+        name:  user2
 
         
   nodeSelector:
