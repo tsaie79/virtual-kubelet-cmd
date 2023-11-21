@@ -58,8 +58,8 @@ func (rm *ResourceManager) GetConfigMap(name, namespace string) (*v1.ConfigMap, 
 }
 
 // ListConfigMaps retrieves the list of config maps from the cache.
-func (rm *ResourceManager) ListConfigMaps() ([]*v1.ConfigMap, error) {
-	return rm.configMapLister.List(labels.Everything())
+func (rm *ResourceManager) ListConfigMaps(namespace string) ([]*v1.ConfigMap, error) {
+	return rm.configMapLister.ConfigMaps(namespace).List(labels.Everything())
 }
 
 // GetSecret retrieves the specified secret from Kubernetes.
@@ -68,8 +68,8 @@ func (rm *ResourceManager) GetSecret(name, namespace string) (*v1.Secret, error)
 }
 
 // ListSecrets retrieves the list of secrets from Kubernetes.
-func (rm *ResourceManager) ListSecrets() ([]*v1.Secret, error) {
-	return rm.secretLister.List(labels.Everything())
+func (rm *ResourceManager) ListSecrets(namespace string) ([]*v1.Secret, error) {
+	return rm.secretLister.Secrets(namespace).List(labels.Everything())
 }
 
 // ListServices retrieves the list of services from Kubernetes.
