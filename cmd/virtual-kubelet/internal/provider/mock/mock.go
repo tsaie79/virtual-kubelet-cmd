@@ -15,21 +15,20 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/virtual-kubelet-cmd/errdefs"
+	"github.com/virtual-kubelet-cmd/internal/manager"
 
 	"github.com/virtual-kubelet-cmd/log"
-	vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
+	// vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
 
+	// "github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
 	"github.com/virtual-kubelet-cmd/node/api"
 	stats "github.com/virtual-kubelet-cmd/node/api/statsv1alpha1"
 	"github.com/virtual-kubelet-cmd/trace"
+	syscall "golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	syscall "golang.org/x/sys/unix"
-	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
-
-	"github.com/pkg/errors"
-
+	// "github.com/pkg/errors"
 )
 
 const (
@@ -63,7 +62,7 @@ type MockProvider struct { //nolint:golint
 	config             MockConfig
 	startTime          time.Time
 	notifier           func(*v1.Pod)
-	podResourceManager kubernetes.PodResourceManager
+	rm                 *manager.ResourceManager
 }
 
 // MockConfig contains a mock virtual-kubelet's configurable parameters.
@@ -75,8 +74,10 @@ type MockConfig struct { //nolint:golint
 	ProviderID string            `json:"providerID,omitempty"`
 }
 
+
+
 // NewMockProviderMockConfig creates a new MockV0Provider. Mock legacy provider does not implement the new asynchronous podnotifier interface
-func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32) (*MockProvider, error) {
+func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32, rm *manager.ResourceManager) (*MockProvider, error) {
 	// set defaults
 	if config.CPU == "" {
 		config.CPU = defaultCPUCapacity
@@ -87,6 +88,7 @@ func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem stri
 	if config.Pods == "" {
 		config.Pods = defaultPodCapacity
 	}
+
 	provider := MockProvider{
 		nodeName:           nodeName,
 		operatingSystem:    operatingSystem,
@@ -95,19 +97,20 @@ func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem stri
 		pods:               make(map[string]*v1.Pod),
 		config:             config,
 		startTime:          time.Now(),
+		rm:                 rm,
 	}
 
 	return &provider, nil
 }
 
 // NewMockProvider creates a new MockProvider, which implements the PodNotifier interface
-func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32) (*MockProvider, error) {
+func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32, rm *manager.ResourceManager) (*MockProvider, error) {
 	config, err := loadConfig(providerConfig, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewMockProviderMockConfig(config, nodeName, operatingSystem, internalIP, daemonEndpointPort)
+	return NewMockProviderMockConfig(config, nodeName, operatingSystem, internalIP, daemonEndpointPort, rm)
 }
 
 // loadConfig loads the given json configuration files.
@@ -205,18 +208,20 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 
 
 	// add volume mounts 
-	var log = vklogv2.New(nil)
+	// var log = vklogv2.New(nil)
 
-	fnlog := log.
-		WithField("podNamespace", pod.Namespace).
-		WithField("podName", pod.Name)
+	// fnlog := log.
+	// 	WithField("podNamespace", pod.Namespace).
+	// 	WithField("podName", pod.Name)
 
-	fnlog.Info("CreatePod called")
+	// fnlog.Info("CreatePod called")
+
 
 	vol, err := p.volumes(pod, volumeAll)
 	if err != nil {
-		err = errors.Wrap(err, "failed to process Pod volumes")
-		fnlog.Error(err)
+		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
+		// err = errors.Wrap(err, "failed to process Pod volumes")
+		// fnlog.Error(err)
 		return err
 	}
 
@@ -234,12 +239,14 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	for _, v := range c.VolumeMounts {
 		dir, ok := vol[v.Name]
 		if !ok {
-			fnlog.Warnf("failed to find volumeMount %s in the specific volumes, skipping", v.Name)
+			// fnlog.Warnf("failed to find volumeMount %s in the specific volumes, skipping", v.Name)
+			log.G(ctx).Infof("failed to find volumeMount %s in the specific volumes, skipping\n", v.Name)
 			continue
 		}
 
 		if v.ReadOnly {
 			bindmountsro = append(bindmountsro, fmt.Sprintf("%s:%s", dir, v.MountPath)) // SubPath, look at todo, filepath.Join?
+			log.G(ctx).Infof("bindmountsro: %s\n", bindmountsro)
 			continue
 		}
 		rwpaths = append(rwpaths, v.MountPath)
@@ -249,6 +256,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		bindmounts = append(bindmounts, fmt.Sprintf("%s:%s", dir, v.MountPath)) // SubPath, look at todo, filepath.Join?
 		// OK, so the v.MountPath will _exist_ on the system, as systemd will create it, permissions should not matter, as we
 		// only need this "hook" to mount the bindmount.
+		log.G(ctx).Infof("bindmounts: %s\n", bindmounts)
 	}
 
 
@@ -257,35 +265,37 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// uf, err := p.unitfileFromPackageOrSynthesized(c)
 
 	// uf = uf.Insert("Service", "TemporaryFileSystem", tmpfs)
-	if len(rwpaths) > 0 {
-		paths := strings.Join(rwpaths, " ")
+
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// if len(rwpaths) > 0 {
+	// 	paths := strings.Join(rwpaths, " ")
 		
 
-		// uf = uf.Insert("Service", "ReadWritePaths", paths)
-	}
-	if len(bindmounts) > 0 {
-		mount := strings.Join(bindmounts, " ")
-		uf = uf.Insert("Service", "BindPaths", mount)
-	}
-	if len(bindmountsro) > 0 {
-		romount := strings.Join(bindmountsro, " ")
-		uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
-	}
+	// 	// uf = uf.Insert("Service", "ReadWritePaths", paths)
+	// }
+	// if len(bindmounts) > 0 {
+	// 	mount := strings.Join(bindmounts, " ")
+	// 	uf = uf.Insert("Service", "BindPaths", mount)
+	// }
+	// if len(bindmountsro) > 0 {
+	// 	romount := strings.Join(bindmountsro, " ")
+	// 	uf = uf.Insert("Service", "BindReadOnlyPaths", romount)
+	// }
 
-	for _, del := range deleteOptions {
-		uf = uf.Delete("Service", del)
-	}
+	// for _, del := range deleteOptions {
+	// 	uf = uf.Delete("Service", del)
+	// }
 
-	envVars := p.defaultEnvironment()
-	for _, env := range c.Env {
-		// If environment variable is a string with spaces, it must be quoted.
-		// Quoting seems innocuous to other strings so it's set by default.
-		envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
-	}
-	for _, env := range envVars {
-		uf = uf.Insert("Service", "Environment", env)
-	}
-
+	// envVars := p.defaultEnvironment()
+	// for _, env := range c.Env {
+	// 	// If environment variable is a string with spaces, it must be quoted.
+	// 	// Quoting seems innocuous to other strings so it's set by default.
+	// 	envVars = append(envVars, fmt.Sprintf("%s=%q", env.Name, env.Value))
+	// }
+	// for _, env := range envVars {
+	// 	uf = uf.Insert("Service", "Environment", env)
+	// }
+// !!!!!!!!!!!!!!!!!!!!!
 
 
 
