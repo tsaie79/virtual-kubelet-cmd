@@ -32,11 +32,11 @@ metadata:
 spec:
   containers:
   - name: job-user1
-    image: user1 #no effect
-    command: [""]
+    image: user1 #required but no effect
+    command: [""] #required but no effect
     volumeMounts:
     - name: user1
-      mountPath: "/no/effect" 
+      mountPath: "/no/effect" #required but no effect
   volumes:
     - name: user1
       configMap:
@@ -54,7 +54,9 @@ bash $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
 ```
 
 # How to execute the multiple jobs in a single pod
-One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallelly. No wait is required.
+One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallelly. No wait is required. 
+
+Notice that we ask users to use multiple containers to execute multiple jobs. Each container is responsible for one job or one volume.
 
 For example, take the following `pod.yaml` as an example:
 ```yaml
@@ -111,6 +113,13 @@ spec:
 ---
 ```
 Notice that the `command`, `image`, and `mountPath` are required, but they have no effect.
+
+
+# Key scripts
+The main control of the vk is in the following files:
+- cmd/virtual-kubelet/internal/provider/mock/mock.go
+- cmd/virtual-kubelet/internal/provider/mock/command.go
+- cmd/virtual-kubelet/internal/provider/mock/volume.go
 
 
 # References
