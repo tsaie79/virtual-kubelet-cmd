@@ -64,13 +64,13 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 		fnlog.Infof("inspecting volume %s", v.Name)
 
 		switch {
-		case v.HostPath != nil:
-			if which != volumeAll {
-				continue
-			}
+		// case v.HostPath != nil:
+		// 	if which != volumeAll {
+		// 		continue
+		// 	}
 
-			// v.Path should exist and be usuable by this pod. No checks are done here.
-			vol[v.Name] = ""
+		// 	// v.Path should exist and be usuable by this pod. No checks are done here.
+		// 	vol[v.Name] = ""
 
 		case v.EmptyDir != nil:
 			if which != volumeAll {
@@ -116,6 +116,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 					return nil, err
 				}
 			}
+			// joint the path of dir and k
 			vol[v.Name] = dir
 
 		case v.ConfigMap != nil:
@@ -131,19 +132,22 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				continue
 			}
 
-			// dir, err := setupPaths(pod, configmapDir, i)
-			var dir string
-			for _, c := range pod.Spec.Containers{
-				for _, vol_mount := range c.VolumeMounts{
-					if v.Name == vol_mount.Name{
-						dir, err = setupPaths(pod, vol_mount.MountPath, i)
-						fnlog.Infof("setupPaths: %s", dir)
-						if err != nil {
-							fnlog.Info("setupPaths error %s", err)
-							return nil, err
-						}
-					}
-				}
+
+			// for _, c := range pod.Spec.Containers{
+			// 	for _, vol_mount := range c.VolumeMounts{
+			// 		if v.Name == vol_mount.Name{
+			// 			dir, err = setupPaths(pod, vol_mount.MountPath, i)
+			// 			fnlog.Infof("setupPaths: %s", dir)
+			// 			if err != nil {
+			// 				fnlog.Info("setupPaths error %s", err)
+			// 				return nil, err
+			// 			}
+			// 		}
+			// 	}
+			// }
+			dir, err := setupPaths(pod, configmapDir, i)
+			if err != nil {
+				return nil, err
 			}
 
 			fnlog.Debugf("created %q for configmap %q", dir, v.Name)
@@ -351,7 +355,8 @@ func cleanPodEphemeralVolumes(podId string) error {
 }
 
 func setupPaths(pod *v1.Pod, path string, i int) (string, error) {
-	id := string(pod.ObjectMeta.UID)
+	// id := string(pod.ObjectMeta.UID)
+	id := pod.Name
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
 	if err != nil {
 		return "", err
@@ -360,11 +365,11 @@ func setupPaths(pod *v1.Pod, path string, i int) (string, error) {
 	dir = filepath.Join(dir, path)
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
+	}	
+	dir = filepath.Join(dir, fmt.Sprintf("volume_%d", i))
+	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
+		return "", err
 	}
-	// dir = filepath.Join(dir, fmt.Sprintf("#%d", i))
-	// if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
-	// 	return "", err
-	// }
 	return dir, nil
 }
 
