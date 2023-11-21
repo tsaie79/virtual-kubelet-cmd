@@ -54,7 +54,7 @@ bash $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
 ```
 
 # How to execute the multiple jobs in a single pod
-One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallelly. No wait is required. 
+One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallellly with the wait time of 10 seconds between each job. 
 
 Notice that we ask users to use multiple containers to execute multiple jobs. Each container is responsible for one job or one volume.
 
