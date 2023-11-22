@@ -1,11 +1,9 @@
-# https://kubernetes.io/docs/concepts/configuration/configmap/
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: user1
   namespace: default
 data:
-  #key value pairs
   hello.sh: |
     #!/bin/bash
     echo "Hello World" > ~/test1.txt && sleep 10
@@ -16,14 +14,12 @@ metadata:
   name: user2
   namespace: default
 data:
-  #key value pairs
   good.sh: |
     #!/bin/bash
     echo "I am good" > ~/test2.txt && sleep 60
 
 ---
 
-# https://kubernetes.io/docs/concepts/workloads/pods/
 apiVersion: v1
 kind: Pod
 metadata:
