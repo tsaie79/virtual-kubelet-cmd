@@ -10,7 +10,11 @@ The mounted path is defined automatically by the vk, following the rule of:
 ```text
 $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
 ``` 
-where `$type_of_volume` is either `configmaps` or `secrets`, and `$volume_name` is the name of the `Volumes:Name`. The `$script_name` is the name of the `ConfigMap:Data` or `Secret:Data`. Notice the `MountPath` is not used in this case.
+where, 
+1. `$type_of_volume` is either `configmaps` or `secrets`.
+2. `$volume_name` is the name of the `Volumes:Name`.
+3. `$script_name` is the name of the `ConfigMap:Data` or `Secret:Data`. To be a valid script, the name should end with `.sh`.
+4. Notice the `MountPath` is not used in this case.
 
 
 For example, take the following `pod.yaml` as an example:
