@@ -44,7 +44,7 @@ spec:
 ```
 The mounted path is: 
 ```text
-$HOME/multijobs/~/jobs/configmaps/user1/hello.sh
+$HOME/multijobs/configmaps/user1/hello.sh
 ```
 
 # How user's workload is executed
