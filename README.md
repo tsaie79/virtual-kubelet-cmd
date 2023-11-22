@@ -123,4 +123,6 @@ The main control of the vk is in the following files:
 
 
 # References
+- [virtual-kubelet](https://github.com/virtual-kubelet/virtual-kubelet)
 - [systemk](https://github.com/virtual-kubelet/systemk)
+- [virtual-kubelet-cmd](https://github.com/tsaie79/virtual-kubelet-cmd)
