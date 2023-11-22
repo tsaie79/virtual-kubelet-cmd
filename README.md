@@ -1,6 +1,6 @@
 # Features of this branch
 This branch is to support the following features:
-- [x] Support `configMap` and `secret` to write scripts at which the pod is launched.
+- [x] Support `configMap` and `secret` as volume types to write scripts at which the pod is launched.
 - [x] Use `configMap` and `secret` to define the user's workload. The `command`, `image`, and `mountPath` are required, but they have no effect. Mounted path is defined automatically by the vk.
 - [x] Support multiple jobs in a single pod.
 
