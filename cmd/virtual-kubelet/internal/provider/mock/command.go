@@ -107,14 +107,14 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 							Terminated: &v1.ContainerStateTerminated{
 								Message:    fmt.Sprintf("bash script executed successfully in workdir %s", script),
 								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     "CmdSucceeded",
+								Reason:     "BashScriptSuccess",
 								StartedAt:  start_container,
 							},
 						},
 					})
 
-					sleep := time.Duration(10) * time.Second
-					time.Sleep(sleep)
+					// sleep := time.Duration(10) * time.Second
+					// time.Sleep(sleep)
 				}
 			}
 		}
