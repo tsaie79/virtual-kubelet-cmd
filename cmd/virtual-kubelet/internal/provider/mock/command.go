@@ -1,19 +1,18 @@
 package mock
 
 import (
+	"context"
+	"fmt"
+	"io/ioutil"
 	"os/exec"
 	"path"
 	"strings"
-	"io/ioutil"
+	"time"
+
+	"github.com/virtual-kubelet-cmd/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/virtual-kubelet-cmd/log"
-	"fmt"
-	"time"
-	"context"
-	
 )
-
 
 func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 	for _, c := range pod.Spec.Containers {
@@ -43,7 +42,6 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 				break
 			}
 
-
 			// run the command in the workdir
 			//scan the workdir for bash scripts
 			files, err := ioutil.ReadDir(workdir)
@@ -66,7 +64,6 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 				})
 				break
 			}
-
 
 			for _, f := range files {
 				if strings.HasSuffix(f.Name(), ".sh") {
@@ -93,7 +90,7 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 								},
 							},
 						})
-						break	
+						break
 					}
 
 					log.G(ctx).Infof("bash script executed successfully in workdir %s", script)
@@ -113,8 +110,8 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 						},
 					})
 
-					// sleep := time.Duration(10) * time.Second
-					// time.Sleep(sleep)
+					sleep := time.Duration(10) * time.Second
+					time.Sleep(sleep)
 				}
 			}
 		}
