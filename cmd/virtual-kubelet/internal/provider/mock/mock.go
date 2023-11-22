@@ -265,7 +265,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
 		Type:   v1.PodConditionType(v1.PodSucceeded),
 		Status: v1.ConditionTrue,
-		Reason: "CmdSucceeded",
+		Reason: "PodSucceeded",
 		Message: "Commands succeeded to execute",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	})
