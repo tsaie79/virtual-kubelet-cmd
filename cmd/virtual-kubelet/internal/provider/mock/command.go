@@ -20,6 +20,7 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 		start_container := metav1.NewTime(time.Now())
 		for _, volMount := range c.VolumeMounts {
 			workdir := vol[volMount.Name]
+			log.G(ctx).Infof("volume mount directory: %s", workdir)
 
 			// if the volume mount is not found in the volume map, return error
 			if workdir == "" {
@@ -111,7 +112,7 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 							},
 						},
 					})
-					
+
 					sleep := time.Duration(10) * time.Second
 					time.Sleep(sleep)
 				}
