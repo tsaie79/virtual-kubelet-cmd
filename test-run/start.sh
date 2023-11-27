@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export MAIN="/workspaces/add-volume"
+export MAIN="/workspaces/virtual-kubelet-cmd"
 export VK_PATH="$MAIN/test-run/apiserver"
 export VK_BIN="$MAIN/bin"
 export KUBECONFIG="$HOME/.kube/config"
