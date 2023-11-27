@@ -6,8 +6,8 @@ metadata:
 data:
   u1-j1.sh: |
     #!/bin/bash
-     sleep 10
-     sleep 11
+     sleep 1
+     sleep 2
 ---
 kind: ConfigMap
 apiVersion: v1
@@ -17,8 +17,8 @@ metadata:
 data :
   u1-j2.sh: |
     #!/bin/bash
-     sleep 12
-     sleep 13
+     sleep 3
+     sleep 4
      
 ---
 
@@ -30,8 +30,8 @@ metadata:
 data:
   u2-j1.sh: |
     #!/bin/bash
-     sleep 14
-     sleep 15
+     sleep 5
+     sleep 6
 
 ---
 
