@@ -8,11 +8,12 @@ import (
 	"path"
 	"strings"
 	"time"
-
+	"os"
 	"github.com/virtual-kubelet-cmd/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+var home_dir = os.Getenv("HOME")
 
 func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 	for _, c := range pod.Spec.Containers {
@@ -66,12 +67,18 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 			}
 
 			for _, f := range files {
+				start_running := metav1.NewTime(time.Now())
 				if strings.HasSuffix(f.Name(), ".sh") {
 					script := path.Join(workdir, f.Name())
 					log.G(ctx).Infof("running bash script %s", script)
 
-					cmd := exec.CommandContext(ctx, "bash", script)
-					err := cmd.Run()
+					// run the bash script in the workdir
+					leader_pid, err := executeProcess(ctx, script)
+					if err != nil {
+						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
+					}
+					log.G(ctx).Infof("Leader pid: %v", leader_pid)
+				
 
 					if err != nil {
 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
@@ -84,9 +91,28 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 							State: v1.ContainerState{
 								Terminated: &v1.ContainerStateTerminated{
 									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
-									FinishedAt: metav1.NewTime(time.Now()),
 									Reason:     "BashScriptFailed",
-									StartedAt:  start_container,
+									StartedAt:  start_running,
+								},
+							},
+						})
+						break
+					}
+
+
+					if err != nil {
+						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
+						// update the container status to failed
+						pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+							Name:         c.Name,
+							Image:        c.Image,
+							Ready:        false,
+							RestartCount: 0,
+							State: v1.ContainerState{
+								Terminated: &v1.ContainerStateTerminated{
+									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
+									Reason:     "BashScriptFailed",
+									StartedAt:  start_running,
 								},
 							},
 						})
@@ -103,9 +129,8 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 						State: v1.ContainerState{
 							Terminated: &v1.ContainerStateTerminated{
 								Message:    fmt.Sprintf("bash script executed successfully in workdir %s", script),
-								FinishedAt: metav1.NewTime(time.Now()),
 								Reason:     "BashScriptSuccess",
-								StartedAt:  start_container,
+								StartedAt:  start_running,
 							},
 						},
 					})
@@ -116,4 +141,20 @@ func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[s
 			}
 		}
 	}
+}
+
+
+// run the bash script in the workdir and keep track of the pids of the processes and their children
+func executeProcess(ctx context.Context, script string) (int, error) {
+	// dont wait for the script to finish
+	cmd := exec.CommandContext(ctx, "bash", script) // run the bash script in the workdir without waiting for it to finish
+	err := cmd.Start()
+
+
+	if err != nil {
+		return 0, err
+	}
+
+	leader_pid := cmd.Process.Pid
+	return leader_pid, nil
 }
