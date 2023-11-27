@@ -240,16 +240,15 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 
 
 	// run the bash script in the pod
-	p.runBashScript(ctx, pod, vol)
+	p.runBashScriptParallel(ctx, pod, vol)
 
-	// update the pod status to success if there are no failed containers
+	// update the pod status to success if there is no reasons containing "Failed"
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Terminated.Reason != "CmdSucceeded" {
-
+		if strings.Contains(containerStatus.State.Terminated.Reason, "Failed") {
 			pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
 				Type:   v1.PodConditionType(v1.PodFailed),
 				Status: v1.ConditionFalse,
-				Reason: "CmdFailed",
+				Reason: "ContainerFailed",
 				Message: "All or some commands failed to execute",
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
@@ -273,6 +272,8 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Reason = "PodSucceeded"
 	pod.Status.Message = "Commands succeeded to execute"
 	p.notifier(pod)
+
+
 	return nil
 }
 
