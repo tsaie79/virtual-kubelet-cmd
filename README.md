@@ -58,31 +58,54 @@ bash $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
 ```
 
 # How to execute the multiple jobs in a single pod
-One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallelly with 10 seconds of interval.
+One can mount multiple `configMap` to a single pod, and then execute them within the same pod. The commands will be executed parallelly by the go routines.
 
-Notice that we ask users to use multiple containers to execute multiple jobs. Each container is responsible for one job or one volume.
+## Definitions of `configMap`, `volume`, and `container`:
+| Kubernetes  | vk                   |
+| ----------- | -------------------- |
+| `configMap` | Job script / workdir |
+| `volume`    |                      |
+| `container` | User                 |
 
-For example, take the following `pod.yaml` as an example:
+
+## Example of multiple jobs in a single pod
+
+There are two users, `u1` and `u2`. User `u1` has two jobs, `u1-j1` and `u1-j2`. User `u2` has one job, `u2-j1`. Jobs are defined by `configMap` and `volume`, while `container` is defined by user.
 ```yaml
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: user1
+  name: u1-j1
   namespace: default
 data:
-  hello.sh: |
+  u1-j1.sh: |
     #!/bin/bash
-    echo "Hello World" > ~/test1.txt && sleep 10
+     sleep 1
+     sleep 2
 ---
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: user2
+  name: u1-j2
+  namespace: default
+data :
+  u1-j2.sh: |
+    #!/bin/bash
+     sleep 3
+     sleep 4
+     
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: u2-j1
   namespace: default
 data:
-  good.sh: |
+  u2-j1.sh: |
     #!/bin/bash
-    echo "I am good" > ~/test2.txt && sleep 60
+     sleep 5
+     sleep 6
 
 ---
 
@@ -92,28 +115,46 @@ metadata:
   name: multijobs
 spec:
   containers:
-  - name: job-user1
-    image: user1
+  - name: u1
+    image: u1
     command: [""]
     volumeMounts:
-    - name: user1
-      mountPath: "/no/effect" 
+    - name: u1-j1
+      mountPath: u1-j1
+    - name: u1-j2
+      mountPath: u1-j2
 
-  - name: job-user2
-    image: user2
+  - name: u2
+    image: u2
     command: [""]
     volumeMounts:
-    - name: user2
-      mountPath: "/no/effect"
+    - name: u2-j1
+      mountPath: u2-j1
 
   volumes:
-    - name: user1
+    - name: u1-j1
       configMap:
-        name:  user1
+        name: u1-j1
+    
+    - name: u1-j2
+      configMap:
+        name: u1-j2
 
-    - name: user2
+    - name: u2-j1
       configMap:
-        name:  user2
+        name:  u2-j1
+
+        
+  nodeSelector:
+    kubernetes.io/role: agent
+  tolerations:
+  - key: "virtual-kubelet.io/provider"
+    value: "mock"
+    effect: "NoSchedule"
+
+
+---
+
 ---
 ```
 Notice that the `command`, `image`, and `mountPath` are required, but they have no effect.
