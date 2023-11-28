@@ -318,23 +318,22 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 	}
 
 	now := metav1.Now()
-	delete(p.pods, key)
-	pod.Status.Phase = v1.PodSucceeded
-	pod.Status.Reason = "CmdSucceeded"
-	pod.Status.Message = "Command succeeded to execute"
 
-	for idx := range pod.Status.ContainerStatuses {
-		pod.Status.ContainerStatuses[idx].Ready = false
-		pod.Status.ContainerStatuses[idx].State = v1.ContainerState{
-			Terminated: &v1.ContainerStateTerminated{
-				Message:    "CMD provider terminated fake container upon deletion",
-				FinishedAt: now,
-				Reason:     "CmdSucceeded",
-				StartedAt:  pod.Status.ContainerStatuses[idx].State.Running.StartedAt,
-			},
+	// update the container status
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
+			ExitCode: 0,
+			FinishedAt: now,
+			Reason: "PodDeleted",
+			Message: "Pod is deleted",
 		}
 	}
 
+
+	delete(p.pods, key)
+	pod.Status.Phase = v1.PodSucceeded
+	pod.Status.Reason = "PodDeleted"
+	pod.Status.Message = "Pod is deleted"
 	p.notifier(pod)
 
 	return nil
