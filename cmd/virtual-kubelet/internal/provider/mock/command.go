@@ -179,7 +179,7 @@ func runScript(ctx context.Context, scriptName string) (string, error, int) {
         return "", err, 0
     }
 	leader_pid := cmd.Process.Pid
-    log.G(ctx).Infof("Bash script name: %s", scriptName)
+    log.G(ctx).Infof("bash script name: %s", scriptName)
 	log.G(ctx).Infof("leader pid: %v", leader_pid)
 
     return out.String(), nil, leader_pid
