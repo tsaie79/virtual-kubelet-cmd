@@ -3,17 +3,15 @@ package mock
 import (
 	"encoding/base64"
 	"fmt"
-	// "hash/fnv"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
-
-	// "github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
-	vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
+	"context"
+	"github.com/virtual-kubelet-cmd/log"
+	// vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	// "k8s.io/apimachinery/pkg/labels"
 )
 
 
@@ -40,28 +38,29 @@ const (
 // volumes inspects the PodSpec.Volumes attribute and returns a mapping with the volume's Name and the directory on-disk that
 // should be used for this. The on-disk structure is prepared and can be used.
 // which considered what volumes should be setup. Defaults to volumeAll
-func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, error) {
+func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (map[string]string, error) {
 	// type pwatch struct {
 	// 	podResourceManager kubernetes.PodResourceManager
 	// }
 
-	var log = vklogv2.New(nil)
-	fnlog := log.
-		WithField("podNamespace", pod.Namespace).
-		WithField("podName", pod.Name)
+	// var log = vklogv2.New(nil)
+	// fnlog := log.
+	// 	WithField("podNamespace", pod.Namespace).
+	// 	WithField("podName", pod.Name)
 
 
 	vol := make(map[string]string)
-	fnlog.Infof("inspecting volumes for pod %s", pod.Name)
+	log.G(ctx).Infof("inspecting volumes for pod %s", pod.Name)
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
-	fnlog.Infof("uid: %s, gid: %s", uid, gid)
+	log.G(ctx).Infof("uid: %s, gid: %s", uid, gid)
+
 
 
 	if err != nil {
 		return nil, err
 	}
 	for _, v := range pod.Spec.Volumes {
-		fnlog.Infof("inspecting volume %s", v.Name)
+		log.G(ctx).Infof("inspecting volume %s", v.Name)
 		i := v.Name
 		switch {
 		// case v.HostPath != nil:
@@ -80,7 +79,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 			if err != nil {
 				return nil, err
 			}
-			fnlog.Debugf("created %q for emptyDir %q", dir, v.Name)
+			log.G(ctx).Infof("created %q for emptyDir %q", dir, v.Name)
 			vol[v.Name] = dir
 
 		case v.Secret != nil:
@@ -100,19 +99,19 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 			if err != nil {
 				return nil, err
 			}
-			fnlog.Debugf("created %q for secret %q", dir, v.Name)
+			log.G(ctx).Infof("created %q for secret %q", dir, v.Name)
 
 			for k, v := range secret.StringData {
 				data, err := base64.StdEncoding.DecodeString(string(v))
 				if err != nil {
 					return nil, err
 				}
-				if err := writeFile(dir, k, uid, gid, data); err != nil {
+				if err := writeFile(ctx, dir, k, uid, gid, data); err != nil {
 					return nil, err
 				}
 			}
 			for k, v := range secret.Data {
-				if err := writeFile(dir, k, uid, gid, []byte(v)); err != nil {
+				if err := writeFile(ctx, dir, k, uid, gid, []byte(v)); err != nil {
 					return nil, err
 				}
 			}
@@ -123,7 +122,7 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 			if which != volumeAll && which != volumeConfigMap {
 				continue
 			}
-			fnlog.Infof("inspecting configMap %s", v.ConfigMap.Name)
+			log.G(ctx).Infof("inspecting configMap %s", v.ConfigMap.Name)
 			configMap, err := p.rm.GetConfigMap(v.ConfigMap.Name, pod.Namespace)
 			if v.ConfigMap.Optional != nil && !*v.ConfigMap.Optional && errors.IsNotFound(err) {
 				return nil, fmt.Errorf("configMap %s is required by pod %s and does not exist", v.ConfigMap.Name, pod.Name)
@@ -150,15 +149,15 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 				return nil, err
 			}
 
-			fnlog.Debugf("created %q for configmap %q", dir, v.Name)
+			log.G(ctx).Infof("created %q for configmap %q", dir, v.Name)
 			
 			for k, v := range configMap.Data {
-				if err := writeFile(dir, k, uid, gid, []byte(v)); err != nil {
+				if err := writeFile(ctx, dir, k, uid, gid, []byte(v)); err != nil {
 					return nil, err
 				}
 			}
 			for k, v := range configMap.BinaryData {
-				if err := writeFile(dir, k, uid, gid, v); err != nil {
+				if err := writeFile(ctx, dir, k, uid, gid, v); err != nil {
 					return nil, err
 				}
 			}
@@ -188,19 +187,20 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 								if err != nil {
 									return nil, err
 								}
-								fnlog.Debugf("created %q for projected serviceAccountToken (secret) %q", dir, v.Name)
+
+								log.G(ctx).Infof("created %q for projected serviceAccountToken (secret) %q", dir, v.Name)
 
 								for k, v := range secret.StringData {
 									data, err := base64.StdEncoding.DecodeString(string(v))
 									if err != nil {
 										return nil, err
 									}
-									if err := writeFile(dir, k, uid, gid, data); err != nil {
+									if err := writeFile(ctx, dir, k, uid, gid, data); err != nil {
 										return nil, err
 									}
 								}
 								for k, v := range secret.Data {
-									if err := writeFile(dir, k, uid, gid, []byte(v)); err != nil {
+									if err := writeFile(ctx, dir, k, uid, gid, []byte(v)); err != nil {
 										return nil, err
 									}
 								}
@@ -223,7 +223,8 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 					if err != nil {
 						return nil, err
 					}
-					fnlog.Debugf("created %q for projected secret %q", dir, v.Name)
+
+					log.G(ctx).Infof("created %q for projected secret %q", dir, v.Name)
 
 					for _, keyToPath := range source.ConfigMap.Items {
 						for k, v := range secret.StringData {
@@ -232,14 +233,14 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 								if err != nil {
 									return nil, err
 								}
-								if err := writeFile(dir, keyToPath.Path, uid, gid, data); err != nil {
+								if err := writeFile(ctx, dir, keyToPath.Path, uid, gid, data); err != nil {
 									return nil, err
 								}
 							}
 						}
 						for k, v := range secret.Data {
 							if keyToPath.Key == k {
-								if err := writeFile(dir, keyToPath.Path, uid, gid, []byte(v)); err != nil {
+								if err := writeFile(ctx, dir, keyToPath.Path, uid, gid, []byte(v)); err != nil {
 									return nil, err
 								}
 							}
@@ -260,19 +261,20 @@ func (p *MockProvider) volumes(pod *v1.Pod, which Volume) (map[string]string, er
 					if err != nil {
 						return nil, err
 					}
-					fnlog.Debugf("created %q for projected configmap %q", dir, v.Name)
+
+					log.G(ctx).Infof("created %q for projected configmap %q", dir, v.Name)
 
 					for _, keyToPath := range source.ConfigMap.Items {
 						for k, v := range configMap.Data {
 							if keyToPath.Key == k {
-								if err := writeFile(dir, keyToPath.Path, uid, gid, []byte(v)); err != nil {
+								if err := writeFile(ctx, dir, keyToPath.Path, uid, gid, []byte(v)); err != nil {
 									return nil, err
 								}
 							}
 						}
 						for k, v := range configMap.BinaryData {
 							if keyToPath.Key == k {
-								if err := writeFile(dir, keyToPath.Path, uid, gid, v); err != nil {
+								if err := writeFile(ctx, dir, keyToPath.Path, uid, gid, v); err != nil {
 									return nil, err
 								}
 							}
@@ -305,17 +307,18 @@ func mkdirAllChown(path string, perm os.FileMode, uid, gid string) error {
 // writeFile writes data in to a tmp file in dir and chowns it to uid/gid and
 // then moves it over file. Note 'file': This mv fails for directories. Those need
 // to be removed first? (This is not done yet)
-func writeFile(dir, file, uid, gid string, data []byte) error {
-	var log = vklogv2.New(nil)
-	fnlog := log.
-		WithField("dir", dir).
-		WithField("file", file)
+func writeFile(ctx context.Context, dir, file, uid, gid string, data []byte) error {
+	// var log = vklogv2.New(nil)
+	// fnlog := log.
+	// 	WithField("dir", dir).
+	// 	WithField("file", file)
 
 	tmpfile, err := ioutil.TempFile(dir, "systemk.*.tmp")
 	if err != nil {
 		return err
 	}
-	fnlog.Debugf("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
+	// fnlog.Debugf("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
+	log.G(ctx).Infof("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
 	if err := chown(tmpfile.Name(), uid, gid); err != nil {
 		return err
 	}
@@ -324,12 +327,14 @@ func writeFile(dir, file, uid, gid string, data []byte) error {
 	if len(data) < 10 {
 		x = len(data)
 	}
-	fnlog.Debugf("writing data %q to path %q", data[:x], tmpfile.Name())
+	// fnlog.Debugf("writing data %q to path %q", data[:x], tmpfile.Name())
+	log.G(ctx).Infof("writing data %q to path %q", data[:x], tmpfile.Name())
 	if err := ioutil.WriteFile(tmpfile.Name(), data, 0640); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, file)
-	fnlog.Debugf("renaming %q to %q", tmpfile.Name(), path)
+	// fnlog.Debugf("renaming %q to %q", tmpfile.Name(), path)
+	log.G(ctx).Infof("renaming %q to %q", tmpfile.Name(), path)
 
 	return os.Rename(tmpfile.Name(), path)
 }
