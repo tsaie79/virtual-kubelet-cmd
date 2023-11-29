@@ -71,9 +71,9 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 			}
 
 			for _, f := range files {
-				if strings.HasSuffix(f.Name(), ".sh") {
+				if strings.HasSuffix(f.Name(), ".job") {
 					script := path.Join(workdir, f.Name())
-					log.G(ctx).Infof("found bash script %s", script)
+					log.G(ctx).Infof("found job script %s", script)
 					bash_scripts[c.Name] = append(bash_scripts[c.Name], script)
 				}
 			}
@@ -103,7 +103,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 				defer wg.Done()
 				_, err, leader_pid := runScript(ctx, script, command)
 				if err != nil {
-					log.G(ctx).Infof("failed to run script %s; error: %v", script, err)
+					log.G(ctx).Infof("failed to run job script %s; error: %v", script, err)
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 						Name:         c.Name,
 						Image:        c.Image,
@@ -111,7 +111,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 						RestartCount: 0,
 						State: v1.ContainerState{
 							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to run script %s; error: %v", script, err),
+								Message:    fmt.Sprintf("failed to run job script %s; error: %v", script, err),
 								FinishedAt: metav1.NewTime(time.Now()),
 								Reason:     "ScriptRunFailed",
 								StartedAt:  start_container,
@@ -147,7 +147,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 
 
 				// update the container status to running
-				log.G(ctx).Infof("bash script executed successfully in workdir %s", script)
+				log.G(ctx).Infof("job script executed successfully in workdir %s", script)
 				// update the container status to success
 				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 					Name:         c.Name,
@@ -156,8 +156,8 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 					RestartCount: 0,
 					State: v1.ContainerState{
 						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("bash script executed successfully in workdir %s", script),
-							Reason:     "BashScriptSuccess",
+							Message:    fmt.Sprintf("job script executed successfully in workdir %s", script),
+							Reason:     "ScriptRunSuccess",
 							StartedAt:  metav1.NewTime(time.Now()),
 						},
 					},
@@ -195,146 +195,146 @@ func runScript(ctx context.Context, scriptName string, command string) (string, 
 
 
 
-func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
-	for _, c := range pod.Spec.Containers {
-		start_container := metav1.NewTime(time.Now())
-		for _, volMount := range c.VolumeMounts {
-			workdir := vol[volMount.Name]
-			log.G(ctx).Infof("volume mount directory: %s", workdir)
+// func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
+// 	for _, c := range pod.Spec.Containers {
+// 		start_container := metav1.NewTime(time.Now())
+// 		for _, volMount := range c.VolumeMounts {
+// 			workdir := vol[volMount.Name]
+// 			log.G(ctx).Infof("volume mount directory: %s", workdir)
 
-			// if the volume mount is not found in the volume map, return error
-			if workdir == "" {
-				log.G(ctx).Infof("volume mount %s not found in the volume map", volMount.Name)
-				// update the container status to failed
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    "volume mount not found in the volume map",
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "VolumeMountNotFound",
-							StartedAt:  start_container,
-						},
-					},
-				})
-				break
-			}
+// 			// if the volume mount is not found in the volume map, return error
+// 			if workdir == "" {
+// 				log.G(ctx).Infof("volume mount %s not found in the volume map", volMount.Name)
+// 				// update the container status to failed
+// 				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+// 					Name:         c.Name,
+// 					Image:        c.Image,
+// 					Ready:        false,
+// 					RestartCount: 0,
+// 					State: v1.ContainerState{
+// 						Terminated: &v1.ContainerStateTerminated{
+// 							Message:    "volume mount not found in the volume map",
+// 							FinishedAt: metav1.NewTime(time.Now()),
+// 							Reason:     "VolumeMountNotFound",
+// 							StartedAt:  start_container,
+// 						},
+// 					},
+// 				})
+// 				break
+// 			}
 
-			// run the command in the workdir
-			//scan the workdir for bash scripts
-			files, err := ioutil.ReadDir(workdir)
-			if err != nil {
-				log.G(ctx).Infof("failed to read workdir %s; error: %v", workdir, err)
-				// update the container status to failed
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("failed to read workdir %s; error: %v", workdir, err),
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "WorkdirReadFailed",
-							StartedAt:  start_container,
-						},
-					},
-				})
-				break
-			}
+// 			// run the command in the workdir
+// 			//scan the workdir for bash scripts
+// 			files, err := ioutil.ReadDir(workdir)
+// 			if err != nil {
+// 				log.G(ctx).Infof("failed to read workdir %s; error: %v", workdir, err)
+// 				// update the container status to failed
+// 				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+// 					Name:         c.Name,
+// 					Image:        c.Image,
+// 					Ready:        false,
+// 					RestartCount: 0,
+// 					State: v1.ContainerState{
+// 						Terminated: &v1.ContainerStateTerminated{
+// 							Message:    fmt.Sprintf("failed to read workdir %s; error: %v", workdir, err),
+// 							FinishedAt: metav1.NewTime(time.Now()),
+// 							Reason:     "WorkdirReadFailed",
+// 							StartedAt:  start_container,
+// 						},
+// 					},
+// 				})
+// 				break
+// 			}
 
-			for _, f := range files {
-				start_running := metav1.NewTime(time.Now())
-				if strings.HasSuffix(f.Name(), ".sh") {
-					script := path.Join(workdir, f.Name())
-					log.G(ctx).Infof("running bash script %s", script)
+// 			for _, f := range files {
+// 				start_running := metav1.NewTime(time.Now())
+// 				if strings.HasSuffix(f.Name(), ".job") {
+// 					script := path.Join(workdir, f.Name())
+// 					log.G(ctx).Infof("running bash script %s", script)
 
-					// run the bash script in the workdir
-					leader_pid, err := executeProcess(ctx, script)
-					if err != nil {
-						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
-					}
-					log.G(ctx).Infof("Leader pid: %v", leader_pid)
+// 					// run the bash script in the workdir
+// 					leader_pid, err := executeProcess(ctx, script)
+// 					if err != nil {
+// 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
+// 					}
+// 					log.G(ctx).Infof("Leader pid: %v", leader_pid)
 				
 
-					if err != nil {
-						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
-						// update the container status to failed
-						pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-							Name:         c.Name,
-							Image:        c.Image,
-							Ready:        false,
-							RestartCount: 0,
-							State: v1.ContainerState{
-								Terminated: &v1.ContainerStateTerminated{
-									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
-									Reason:     "BashScriptFailed",
-									StartedAt:  start_running,
-								},
-							},
-						})
-						break
-					}
+// 					if err != nil {
+// 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
+// 						// update the container status to failed
+// 						pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+// 							Name:         c.Name,
+// 							Image:        c.Image,
+// 							Ready:        false,
+// 							RestartCount: 0,
+// 							State: v1.ContainerState{
+// 								Terminated: &v1.ContainerStateTerminated{
+// 									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
+// 									Reason:     "BashScriptFailed",
+// 									StartedAt:  start_running,
+// 								},
+// 							},
+// 						})
+// 						break
+// 					}
 
 
-					if err != nil {
-						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
-						// update the container status to failed
-						pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-							Name:         c.Name,
-							Image:        c.Image,
-							Ready:        false,
-							RestartCount: 0,
-							State: v1.ContainerState{
-								Terminated: &v1.ContainerStateTerminated{
-									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
-									Reason:     "BashScriptFailed",
-									StartedAt:  start_running,
-								},
-							},
-						})
-						break
-					}
+// 					if err != nil {
+// 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
+// 						// update the container status to failed
+// 						pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+// 							Name:         c.Name,
+// 							Image:        c.Image,
+// 							Ready:        false,
+// 							RestartCount: 0,
+// 							State: v1.ContainerState{
+// 								Terminated: &v1.ContainerStateTerminated{
+// 									Message:    fmt.Sprintf("failed to run bash script: %s; error: %v", script, err),
+// 									Reason:     "BashScriptFailed",
+// 									StartedAt:  start_running,
+// 								},
+// 							},
+// 						})
+// 						break
+// 					}
 
-					log.G(ctx).Infof("bash script executed successfully in workdir %s", script)
-					// update the container status to success
-					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-						Name:         c.Name,
-						Image:        c.Image,
-						Ready:        true,
-						RestartCount: 0,
-						State: v1.ContainerState{
-							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("bash script executed successfully in workdir %s", script),
-								Reason:     "BashScriptSuccess",
-								StartedAt:  start_running,
-							},
-						},
-					})
+// 					log.G(ctx).Infof("bash script executed successfully in workdir %s", script)
+// 					// update the container status to success
+// 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+// 						Name:         c.Name,
+// 						Image:        c.Image,
+// 						Ready:        true,
+// 						RestartCount: 0,
+// 						State: v1.ContainerState{
+// 							Terminated: &v1.ContainerStateTerminated{
+// 								Message:    fmt.Sprintf("bash script executed successfully in workdir %s", script),
+// 								Reason:     "BashScriptSuccess",
+// 								StartedAt:  start_running,
+// 							},
+// 						},
+// 					})
 
-					sleep := time.Duration(10) * time.Second
-					time.Sleep(sleep)
-				}
-			}
-		}
-	}
-}
-
-
-// run the bash script in the workdir and keep track of the pids of the processes and their children
-func executeProcess(ctx context.Context, script string) (int, error) {
-	// dont wait for the script to finish
-	cmd := exec.CommandContext(ctx, "bash", script) // run the bash script in the workdir without waiting for it to finish
-	err := cmd.Start()
+// 					sleep := time.Duration(10) * time.Second
+// 					time.Sleep(sleep)
+// 				}
+// 			}
+// 		}
+// 	}
+// }
 
 
-	if err != nil {
-		return 0, err
-	}
+// // run the bash script in the workdir and keep track of the pids of the processes and their children
+// func executeProcess(ctx context.Context, script string) (int, error) {
+// 	// dont wait for the script to finish
+// 	cmd := exec.CommandContext(ctx, "bash", script) // run the bash script in the workdir without waiting for it to finish
+// 	err := cmd.Start()
 
-	leader_pid := cmd.Process.Pid
-	return leader_pid, nil
-}
+
+// 	if err != nil {
+// 		return 0, err
+// 	}
+
+// 	leader_pid := cmd.Process.Pid
+// 	return leader_pid, nil
+// }
