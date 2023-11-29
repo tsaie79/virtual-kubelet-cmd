@@ -4,8 +4,8 @@ metadata:
   name: u1-j1
   namespace: default
 data:
-  u1-j1.sh: |
-     sleep 1
+  u1-j1.job: |
+     echo "hello world" > ~/u1-j1.txt
      sleep 2
 ---
 kind: ConfigMap
