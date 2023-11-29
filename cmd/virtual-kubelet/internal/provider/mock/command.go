@@ -109,7 +109,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 			wg.Add(1)
 			go func(script string, c v1.Container) {
 				defer wg.Done()
-				_, err, leader_pid := runScript(ctx, script, command)
+				_, leader_pid, err := runScript(ctx, script, command)
 				if err != nil {
 					log.G(ctx).Infof("failed to run job script %s; error: %v", script, err)
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
@@ -131,7 +131,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 
 				//write the leader pid to the leader_pid file
 				// name leader_pid file as the script name without .sh and add .leader_pid
-				leader_pid_file := strings.TrimSuffix(script, ".sh") + ".leader_pid"
+				leader_pid_file := strings.TrimSuffix(script, ".job") + ".leader_pid"
 				err = ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
 				if err != nil {
 					log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
@@ -196,7 +196,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 
 }
 
-func runScript(ctx context.Context, scriptName string, command string) (string, error, int) {
+func runScript(ctx context.Context, scriptName string, command string) (string, int, error) {
 	cmd := exec.Command(command, scriptName)
 
 	var out bytes.Buffer
@@ -206,13 +206,13 @@ func runScript(ctx context.Context, scriptName string, command string) (string, 
 
 	err := cmd.Run()
 	if err != nil {
-		return "", err, 0
+		return "", 0, err
 	}
 	leader_pid := cmd.Process.Pid
 	log.G(ctx).Infof("command: %s, script: %s, stdout: %s, stderr: %s", command, scriptName, out.String(), stderr.String())
 	log.G(ctx).Infof("leader pid: %v", leader_pid)
 
-	return out.String(), nil, leader_pid
+	return out.String(), leader_pid, nil
 }
 
 // func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
