@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 	"time"
-	"os"
+	// "os"
 	"bytes"
 	"github.com/virtual-kubelet-cmd/log"
 	v1 "k8s.io/api/core/v1"
@@ -16,14 +16,14 @@ import (
 	"sync"
 )
 
-var home_dir = os.Getenv("HOME")
+// var home_dir = os.Getenv("HOME")
 var start_container = metav1.NewTime(time.Now())
 
 func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) map[string][]string {
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
-	bash_scripts := make(map[string][]string)
+	job_scripts := make(map[string][]string)
 	for _, c := range pod.Spec.Containers {
-		bash_scripts[c.Name] = []string{}
+		job_scripts[c.Name] = []string{}
 		for _, volMount := range c.VolumeMounts {
 			workdir := vol[volMount.Name]
 			log.G(ctx).Infof("volume mount directory: %s", workdir)
@@ -45,7 +45,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 						},
 					},
 				})
-				break
+				continue
 			}
 
 			// run the command in the workdir
@@ -67,28 +67,36 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 						},
 					},
 				})
-				break
+				continue
 			}
 
 			for _, f := range files {
 				if strings.HasSuffix(f.Name(), ".job") {
 					script := path.Join(workdir, f.Name())
 					log.G(ctx).Infof("found job script %s", script)
-					bash_scripts[c.Name] = append(bash_scripts[c.Name], script)
+					job_scripts[c.Name] = append(job_scripts[c.Name], script)
+				} else {
+					log.G(ctx).Infof("found non-job script %s", f.Name())
 				}
 			}
 		}
 	}
-	return bash_scripts
+	log.G(ctx).Infof("job scripts: %v", job_scripts)
+	return job_scripts
 }
-
-
 
 // run scripts in parallel
 func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) {
-	bash_scripts := p.collectScripts(ctx, pod, vol)
+	job_scripts := p.collectScripts(ctx, pod, vol)
+
 	var wg sync.WaitGroup
 	for _, c := range pod.Spec.Containers {
+
+		if len(job_scripts[c.Name]) == 0 {
+			log.G(ctx).Infof("no job scripts found for container %s", c.Name)
+			continue
+		}
+
 		//define command to run the bash script based on c.Command of list of strings
 		var command string
 		if len(c.Command) == 0 {
@@ -97,7 +105,7 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 			command = strings.Join(c.Command, " ")
 		}
 
-		for _, script := range bash_scripts[c.Name] {
+		for _, script := range job_scripts[c.Name] {
 			wg.Add(1)
 			go func(script string, c v1.Container) {
 				defer wg.Done()
@@ -145,7 +153,6 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 				}
 				log.G(ctx).Infof("successfully write leader pid to file %s", leader_pid_file)
 
-
 				// update the container status to running
 				log.G(ctx).Infof("job script executed successfully in workdir %s", script)
 				// update the container status to success
@@ -156,44 +163,57 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 					RestartCount: 0,
 					State: v1.ContainerState{
 						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("job script executed successfully in workdir %s", script),
-							Reason:     "ScriptRunSuccess",
-							StartedAt:  metav1.NewTime(time.Now()),
+							Message:   fmt.Sprintf("job script executed successfully in workdir %s", script),
+							Reason:    "ScriptRunSuccess",
+							StartedAt: metav1.NewTime(time.Now()),
 						},
 					},
 				})
-
 
 			}(script, c)
 		}
 	}
 	wg.Wait()
+
+	// no job scripts found
+	if len(pod.Status.ContainerStatuses) == 0 {
+		log.G(ctx).Infof("no job scripts found")
+		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+			Name:         pod.Spec.Containers[0].Name,
+			Image:        pod.Spec.Containers[0].Image,
+			Ready:        false,
+			RestartCount: 0,
+			State: v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{
+					Message:    "no job scripts found",
+					FinishedAt: metav1.NewTime(time.Now()),
+					Reason:     "NoJobScriptFound",
+					StartedAt:  start_container,
+				},
+			},
+		})
+	}
+
 }
-
-
-
-
 
 func runScript(ctx context.Context, scriptName string, command string) (string, error, int) {
-    cmd := exec.Command(command, scriptName)
+	cmd := exec.Command(command, scriptName)
 
-    var out bytes.Buffer
-    var stderr bytes.Buffer
-    cmd.Stdout = &out
-    cmd.Stderr = &stderr
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 
-    err := cmd.Run()
-    if err != nil {
-        return "", err, 0
-    }
+	err := cmd.Run()
+	if err != nil {
+		return "", err, 0
+	}
 	leader_pid := cmd.Process.Pid
-    log.G(ctx).Infof("command: %s, script: %s, stdout: %s, stderr: %s", command, scriptName, out.String(), stderr.String())
+	log.G(ctx).Infof("command: %s, script: %s, stdout: %s, stderr: %s", command, scriptName, out.String(), stderr.String())
 	log.G(ctx).Infof("leader pid: %v", leader_pid)
 
-    return out.String(), nil, leader_pid
+	return out.String(), nil, leader_pid
 }
-
-
 
 // func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 // 	for _, c := range pod.Spec.Containers {
@@ -258,7 +278,6 @@ func runScript(ctx context.Context, scriptName string, command string) (string, 
 // 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
 // 					}
 // 					log.G(ctx).Infof("Leader pid: %v", leader_pid)
-				
 
 // 					if err != nil {
 // 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
@@ -278,7 +297,6 @@ func runScript(ctx context.Context, scriptName string, command string) (string, 
 // 						})
 // 						break
 // 					}
-
 
 // 					if err != nil {
 // 						log.G(ctx).Infof("failed to run bash script: %s; error: %v", script, err)
@@ -323,13 +341,11 @@ func runScript(ctx context.Context, scriptName string, command string) (string, 
 // 	}
 // }
 
-
 // // run the bash script in the workdir and keep track of the pids of the processes and their children
 // func executeProcess(ctx context.Context, script string) (int, error) {
 // 	// dont wait for the script to finish
 // 	cmd := exec.CommandContext(ctx, "bash", script) // run the bash script in the workdir without waiting for it to finish
 // 	err := cmd.Start()
-
 
 // 	if err != nil {
 // 		return 0, err
