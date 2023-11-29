@@ -19,7 +19,7 @@ metadata:
 data:
   support.sh: |
     #!/bin/bash
-    export message="hello world"
+    echo $message3
 
 ---
 
@@ -29,33 +29,22 @@ metadata:
   name: multijobs
 spec:
   containers:
-  # - name: support
-  #   image: support
-  #   command: ["/bin/bash"]
-  #   volumeMounts:
-  #   - name: support
-  #     mountPath: ~/
-  #   resources:
-  #     limits:
-  #       cpu: "1"
-  #       memory: 1Gi
-  #   env:
-  #   - name: message
-  #     value: "hello world"
-
-
   - name: job1
     image: job1
     command: ["/bin/bash"]
     env:
     - name: message1
-      value: "hello world"
+      value: "I'm env1"
     - name: message2
-      value: "my name is job1"
+      value: "I'm env2"
+    - name: message3
+      value: "I'm env3"
 
     volumeMounts:
     - name: job1
-      mountPath: ~/
+      mountPath: ~/job1
+    - name: support
+      mountPath: ~/support
     resources:
       limits:
         cpu: "1"
