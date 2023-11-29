@@ -89,11 +89,19 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 	bash_scripts := p.collectScripts(ctx, pod, vol)
 	var wg sync.WaitGroup
 	for _, c := range pod.Spec.Containers {
+		//define command to run the bash script based on c.Command of list of strings
+		var command string
+		if len(c.Command) == 0 {
+			command = "bash"
+		} else {
+			command = strings.Join(c.Command, " ")
+		}
+
 		for _, script := range bash_scripts[c.Name] {
 			wg.Add(1)
 			go func(script string, c v1.Container) {
 				defer wg.Done()
-				_, err, leader_pid := runScript(ctx, script)
+				_, err, leader_pid := runScript(ctx, script, command)
 				if err != nil {
 					log.G(ctx).Infof("failed to run script %s; error: %v", script, err)
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
@@ -166,8 +174,8 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 
 
 
-func runScript(ctx context.Context, scriptName string) (string, error, int) {
-    cmd := exec.Command("bash", scriptName)
+func runScript(ctx context.Context, scriptName string, command string) (string, error, int) {
+    cmd := exec.Command(command, scriptName)
 
     var out bytes.Buffer
     var stderr bytes.Buffer
@@ -179,7 +187,7 @@ func runScript(ctx context.Context, scriptName string) (string, error, int) {
         return "", err, 0
     }
 	leader_pid := cmd.Process.Pid
-    log.G(ctx).Infof("bash script name: %s", scriptName)
+    log.G(ctx).Infof("command: %s, script: %s, stdout: %s, stderr: %s", command, scriptName, out.String(), stderr.String())
 	log.G(ctx).Infof("leader pid: %v", leader_pid)
 
     return out.String(), nil, leader_pid
