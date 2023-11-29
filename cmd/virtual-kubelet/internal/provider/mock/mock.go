@@ -240,7 +240,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 
 
 	// run the bash script in the pod
-	p.runBashScriptParallel(ctx, pod, vol)
+	p.runScriptParallel(ctx, pod, vol)
 
 	// update the pod status to success if there is no reasons containing "Failed"
 	for _, containerStatus := range pod.Status.ContainerStatuses {
