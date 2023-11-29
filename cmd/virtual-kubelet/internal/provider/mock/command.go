@@ -88,9 +88,8 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 				}
 				
 				// move f to the volume mount directory
-				err := exec.Command("mv", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name())).Run()
+				err := moveFile(ctx, workdir, mountdir, f.Name())
 				if err != nil {
-					log.G(ctx).Infof("failed to move file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err)
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 						Name:         c.Name,
 						Image:        c.Image,
@@ -262,6 +261,23 @@ func runScript(ctx context.Context, scriptName string, command string, env []v1.
 
 	return out.String(), leader_pid, nil
 }
+
+func moveFile(ctx context.Context, src string, dst string, filename string) error {
+	// create the destination directory if it does not exist
+	err := exec.Command("mkdir", "-p", dst).Run()
+	if err != nil {
+		log.G(ctx).Infof("failed to create directory %s; error: %v", dst, err)
+		return err
+	}
+	//mv the file to the destination directory
+	err = exec.Command("mv", path.Join(src, filename), path.Join(dst, filename)).Run()
+	if err != nil {
+		log.G(ctx).Infof("failed to move file %s to %s; error: %v", path.Join(src, filename), path.Join(dst, filename), err)
+		return err
+	}
+	return nil
+}
+
 
 // func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 // 	for _, c := range pod.Spec.Containers {
