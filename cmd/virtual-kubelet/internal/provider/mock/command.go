@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 	"time"
-	// "os"
+	"os"
 	"bytes"
 	"github.com/virtual-kubelet-cmd/log"
 	v1 "k8s.io/api/core/v1"
@@ -18,15 +18,24 @@ import (
 
 // var home_dir = os.Getenv("HOME")
 var start_container = metav1.NewTime(time.Now())
+var home_dir = os.Getenv("HOME")
+
 
 func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) map[string][]string {
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
-	job_scripts := make(map[string][]string)
+	scripts := make(map[string][]string)
 	for _, c := range pod.Spec.Containers {
-		job_scripts[c.Name] = []string{}
+		log.G(ctx).Infof("container name: %s", c.Name)
+		scripts[c.Name] = []string{}
 		for _, volMount := range c.VolumeMounts {
 			workdir := vol[volMount.Name]
-			log.G(ctx).Infof("volume mount directory: %s", workdir)
+			mountdir := volMount.MountPath
+			// if mountdir has ~, replace it with home_dir
+			if strings.HasPrefix(mountdir, "~") {
+				mountdir = strings.Replace(mountdir, "~", home_dir, 1)
+			}
+
+			log.G(ctx).Infof("volume name: %s, volume mount directory: %s", volMount.Name, mountdir)
 			// if the volume mount is not found in the volume map, return error
 			if workdir == "" {
 				log.G(ctx).Infof("volume mount %s not found in the volume map", volMount.Name)
@@ -71,45 +80,78 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 			}
 
 			for _, f := range files {
-				if strings.HasSuffix(f.Name(), ".job") {
-					script := path.Join(workdir, f.Name())
-					log.G(ctx).Infof("found job script %s", script)
-					job_scripts[c.Name] = append(job_scripts[c.Name], script)
-				} else {
-					log.G(ctx).Infof("found non-job script %s", f.Name())
+				log.G(ctx).Infof("file name: %s", f.Name())
+				// if f.Name() contains crt, key, or pem, skip it
+				if strings.Contains(f.Name(), "crt") || strings.Contains(f.Name(), "key") || strings.Contains(f.Name(), "pem") {
+					log.G(ctx).Infof("file name %s contains crt, key, or pem, skip it", f.Name())
+					continue
 				}
+				
+				// move f to the volume mount directory
+				err := exec.Command("mv", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name())).Run()
+				if err != nil {
+					log.G(ctx).Infof("failed to move file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err)
+					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+						Name:         c.Name,
+						Image:        c.Image,
+						Ready:        false,
+						RestartCount: 0,
+						State: v1.ContainerState{
+							Terminated: &v1.ContainerStateTerminated{
+								Message:    fmt.Sprintf("failed to move file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err),
+								FinishedAt: metav1.NewTime(time.Now()),
+								Reason:     "FileMoveFailed",
+								StartedAt:  start_container,
+							},
+						},
+					})
+					continue
+				}
+				
+				script := path.Join(mountdir, f.Name())
+				log.G(ctx).Infof("found script %s", script)
+				scripts[c.Name] = append(scripts[c.Name], script)
+				// if strings.HasSuffix(f.Name(), ".job") {
+				// 	script := path.Join(mountdir, f.Name())
+				// 	log.G(ctx).Infof("found job script %s", script)
+				// 	job_scripts[c.Name] = append(job_scripts[c.Name], script)
+				// } else {
+				// 	log.G(ctx).Infof("found non-job script %s", f.Name())
+				// }
 			}
 		}
 	}
-	log.G(ctx).Infof("job scripts: %v", job_scripts)
-	return job_scripts
+	log.G(ctx).Infof("found scripts: %v", scripts)
+	return scripts
 }
 
 // run scripts in parallel
-func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) {
-	job_scripts := p.collectScripts(ctx, pod, vol)
+func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) {
+	scripts := p.collectScripts(ctx, pod, vol)
 
 	var wg sync.WaitGroup
 	for _, c := range pod.Spec.Containers {
 
-		if len(job_scripts[c.Name]) == 0 {
-			log.G(ctx).Infof("no job scripts found for container %s", c.Name)
+		if len(scripts[c.Name]) == 0 {
+			log.G(ctx).Infof("no scripts found for container %s", c.Name)
 			continue
 		}
-
+		
 		//define command to run the bash script based on c.Command of list of strings
 		var command string
 		if len(c.Command) == 0 {
-			command = "bash"
+			log.G(ctx).Infof("no command found for container %s", c.Name)
+			continue
 		} else {
 			command = strings.Join(c.Command, " ")
 		}
 
-		for _, script := range job_scripts[c.Name] {
+		for _, script := range scripts[c.Name] {
 			wg.Add(1)
 			go func(script string, c v1.Container) {
 				defer wg.Done()
-				_, leader_pid, err := runScript(ctx, script, command)
+				env := c.Env // what is the type of c.Env? []v1.EnvVar
+				_, leader_pid, err := runScript(ctx, script, command, env)
 				if err != nil {
 					log.G(ctx).Infof("failed to run job script %s; error: %v", script, err)
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
@@ -196,9 +238,15 @@ func (p *MockProvider) runBashScriptParallel(ctx context.Context, pod *v1.Pod, v
 
 }
 
-func runScript(ctx context.Context, scriptName string, command string) (string, int, error) {
+func runScript(ctx context.Context, scriptName string, command string, env []v1.EnvVar) (string, int, error) {
+	// run the script with the env variables set
 	cmd := exec.Command(command, scriptName)
-
+	cmd.Env = os.Environ()
+	for _, e := range env {
+		log.G(ctx).Infof("env name: %s, env value: %s", e.Name, e.Value)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
+	}
+	
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
