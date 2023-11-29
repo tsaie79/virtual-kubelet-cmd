@@ -206,7 +206,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	
 
 	// add volume mounts to the pod 
-	vol, err := p.volumes(pod, volumeAll)
+	vol, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
 		//update pod status by adding the reason and message to conditions
