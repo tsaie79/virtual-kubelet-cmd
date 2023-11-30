@@ -21,7 +21,7 @@ var start_container = metav1.NewTime(time.Now())
 var home_dir = os.Getenv("HOME")
 
 
-func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) map[string][]string {
+func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
 	scripts := make(map[string][]string)
 	for _, c := range pod.Spec.Containers {
@@ -30,15 +30,16 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 		for _, volMount := range c.VolumeMounts {
 			workdir := vol[volMount.Name]
 			mountdir := volMount.MountPath
+
 			// if mountdir has ~, replace it with home_dir
 			if strings.HasPrefix(mountdir, "~") {
 				mountdir = strings.Replace(mountdir, "~", home_dir, 1)
 			}
 
-			log.G(ctx).Infof("volume name: %s, volume mount directory: %s", volMount.Name, mountdir)
+			log.G(ctx).Infof("volumeMount: %s, volume mount directory: %s", volMount.Name, mountdir)
 			// if the volume mount is not found in the volume map, return error
 			if workdir == "" {
-				log.G(ctx).Infof("volume mount %s not found in the volume map", volMount.Name)
+				log.G(ctx).Infof("volumeMount %s not found in the volume map", volMount.Name)
 				// update the container status to failed
 				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 					Name:         c.Name,
@@ -121,125 +122,139 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 		}
 	}
 	log.G(ctx).Infof("found scripts: %v", scripts)
-	return scripts
 }
 
-// run scripts in parallel
+// run container in parallel
 func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) {
-	scripts := p.collectScripts(ctx, pod, vol)
+	p.collectScripts(ctx, pod, vol)
 
 	var wg sync.WaitGroup
+	errChan := make(chan error, 1)
 	for _, c := range pod.Spec.Containers {
-
-		if len(scripts[c.Name]) == 0 {
-			log.G(ctx).Infof("no scripts found for container %s", c.Name)
-			continue
-		}
-		
-		//define command to run the bash script based on c.Command of list of strings
-		var command string
-		if len(c.Command) == 0 {
-			log.G(ctx).Infof("no command found for container %s", c.Name)
-			continue
-		} else {
-			command = strings.Join(c.Command, " ")
-		}
-
-		for _, script := range scripts[c.Name] {
-			wg.Add(1)
-			go func(script string, c v1.Container) {
-				defer wg.Done()
-				env := c.Env // what is the type of c.Env? []v1.EnvVar
-				_, leader_pid, err := runScript(ctx, script, command, env)
-				if err != nil {
-					log.G(ctx).Infof("failed to run job script %s; error: %v", script, err)
-					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-						Name:         c.Name,
-						Image:        c.Image,
-						Ready:        false,
-						RestartCount: 0,
-						State: v1.ContainerState{
-							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to run job script %s; error: %v", script, err),
-								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     "ScriptRunFailed",
-								StartedAt:  start_container,
-							},
-						},
-					})
-					return
+		wg.Add(1)
+		go func(c v1.Container) {
+			defer wg.Done()
+			log.G(ctx).Infof("---------------container name: %s", c.Name)
+			var leader_pid_volmount string
+			for _, volMount := range c.VolumeMounts {
+				if strings.Contains(volMount.Name, "leader-pid") {
+					leader_pid_volmount = volMount.MountPath
 				}
+			}
+			if leader_pid_volmount == "" {
+				log.G(ctx).Infof("leader pid volume mount not found for container %s", c.Name)
+				return
+			}
+			//define command to run the bash script based on c.Command of list of strings
+			var command = c.Command
+			if len(command) == 0 {
+				log.G(ctx).Infof("no command found for container %s", c.Name)
+				return
+			}
 
-				//write the leader pid to the leader_pid file
-				// name leader_pid file as the script name without .sh and add .leader_pid
-				leader_pid_file := strings.TrimSuffix(script, ".job") + ".leader_pid"
-				err = ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
-				if err != nil {
-					log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
-					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-						Name:         c.Name,
-						Image:        c.Image,
-						Ready:        false,
-						RestartCount: 0,
-						State: v1.ContainerState{
-							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
-								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     "LeaderPidWriteFailed",
-								StartedAt:  start_container,
-							},
-						},
-					})
-					return
-				}
-				log.G(ctx).Infof("successfully write leader pid to file %s", leader_pid_file)
+			var args string
+			if len(c.Args) == 0 {
+				log.G(ctx).Infof("no args found for container %s", c.Name)
+				return
+			} else {
+				args = strings.Join(c.Args, " ")
+				// if args contains "~", replace it with home_dir
+				args = strings.Replace(args, "~", home_dir, 1)
+			}
 
-				// update the container status to running
-				log.G(ctx).Infof("job script executed successfully in workdir %s", script)
-				// update the container status to success
+			env := c.Env // what is the type of c.Env? []v1.EnvVar
+			_, leader_pid, err := runScript(ctx, command, args, env)
+			if err != nil {
+				log.G(ctx).Infof("failed to run cmd %s, arg %s; error: %v", command, args, err)
 				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
-					Ready:        true,
+					Ready:        false,
 					RestartCount: 0,
 					State: v1.ContainerState{
 						Terminated: &v1.ContainerStateTerminated{
-							Message:   fmt.Sprintf("job script executed successfully in workdir %s", script),
-							Reason:    "ScriptRunSuccess",
-							StartedAt: metav1.NewTime(time.Now()),
+							Message:    fmt.Sprintf("failed to run cmd %s, arg %s; error: %v", command, args, err),
+							FinishedAt: metav1.NewTime(time.Now()),
+							Reason:     "ContainerRunFailed",
+							StartedAt:  start_container,
 						},
 					},
 				})
+				return
+			}
 
-			}(script, c)
-		}
-	}
-	wg.Wait()
+			//write the leader pid to the leader_pid file
+			// name leader_pid file as container name + .leader_pid
+			leader_pid_file := path.Join(c.Name + ".leader_pid")
+			err = writeLeaderPid(ctx, leader_pid_volmount, leader_pid_file, leader_pid)
+			if err != nil {
+				log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
+				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+					Name:         c.Name,
+					Image:        c.Image,
+					Ready:        false,
+					RestartCount: 0,
+					State: v1.ContainerState{
+						Terminated: &v1.ContainerStateTerminated{
+							Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
+							FinishedAt: metav1.NewTime(time.Now()),
+							Reason:     "LeaderPidWriteFailed",
+							StartedAt:  start_container,
+						},
+					},
+				})
+				return
+			}
 
-	// no job scripts found
-	if len(pod.Status.ContainerStatuses) == 0 {
-		log.G(ctx).Infof("no job scripts found")
-		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-			Name:         pod.Spec.Containers[0].Name,
-			Image:        pod.Spec.Containers[0].Image,
-			Ready:        false,
-			RestartCount: 0,
-			State: v1.ContainerState{
-				Terminated: &v1.ContainerStateTerminated{
-					Message:    "no job scripts found",
-					FinishedAt: metav1.NewTime(time.Now()),
-					Reason:     "NoJobScriptFound",
-					StartedAt:  start_container,
+			// update the container status to success
+			pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+				Name:         c.Name,
+				Image:        c.Image,
+				Ready:        true,
+				RestartCount: 0,
+				State: v1.ContainerState{
+					Terminated: &v1.ContainerStateTerminated{
+						Message:   fmt.Sprintf("container %s executed successfully", c.Name),
+						Reason:    "ContainerRunSuccess",
+						StartedAt: metav1.NewTime(time.Now()),
+					},
 				},
-			},
-		})
+			})
+		}(c)
 	}
-
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
 }
 
-func runScript(ctx context.Context, scriptName string, command string, env []v1.EnvVar) (string, int, error) {
+func writeLeaderPid(ctx context.Context, leader_pid_volmount string, leader_pid_file string, leader_pid int) error {
+	leader_pid_volmount = strings.Replace(leader_pid_volmount, "~", home_dir, 1)
+	// make sure the leader_pid_mount directory exists
+	err := exec.Command("mkdir", "-p", leader_pid_volmount).Run()
+	//replace the ~ with home_dir in leader_pid_volmount
+	if err != nil {
+		log.G(ctx).Infof("failed to create directory %s; error: %v", leader_pid_volmount, err)
+		return err
+	}
+
+	//write the leader pid to the leader_pid file
+	// name leader_pid file as container name + .leader_pid
+	leader_pid_file = path.Join(leader_pid_volmount, leader_pid_file)
+	err = ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
+	if err != nil {
+		log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
+		return err
+	}
+	log.G(ctx).Infof("successfully write leader pid to file %s", leader_pid_file)
+	return nil
+}	
+
+func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (string, int, error) {
 	// run the script with the env variables set
-	cmd := exec.Command(command, scriptName)
+	// run the command like [command[0], command[1], ...] args
+	command = append(command, args)
+	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Env = os.Environ()
 	for _, e := range env {
 		log.G(ctx).Infof("env name: %s, env value: %s", e.Name, e.Value)
@@ -251,12 +266,13 @@ func runScript(ctx context.Context, scriptName string, command string, env []v1.
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
+	log.G(ctx).Infof("start running command: %s, arg: %s", command, args)
 	err := cmd.Run()
 	if err != nil {
 		return "", 0, err
 	}
 	leader_pid := cmd.Process.Pid
-	log.G(ctx).Infof("command: %s, script: %s, stdout: %s, stderr: %s", command, scriptName, out.String(), stderr.String())
+	log.G(ctx).Infof("successfully ran command: %s, arg: %s, stdout: %s, stderr: %s", command, args, out.String(), stderr.String())
 	log.G(ctx).Infof("leader pid: %v", leader_pid)
 
 	return out.String(), leader_pid, nil
