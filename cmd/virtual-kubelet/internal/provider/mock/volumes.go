@@ -131,19 +131,6 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 				continue
 			}
 
-
-			// for _, c := range pod.Spec.Containers{
-			// 	for _, vol_mount := range c.VolumeMounts{
-			// 		if v.Name == vol_mount.Name{
-			// 			dir, err = setupPaths(pod, vol_mount.MountPath, i)
-			// 			fnlog.Infof("setupPaths: %s", dir)
-			// 			if err != nil {
-			// 				fnlog.Info("setupPaths error %s", err)
-			// 				return nil, err
-			// 			}
-			// 		}
-			// 	}
-			// }
 			dir, err := setupPaths(pod, configmapDir, i)
 			if err != nil {
 				return nil, err
