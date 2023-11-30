@@ -6,8 +6,9 @@ metadata:
 data:
   job1.job: |
     #!/bin/bash
-    echo $message1
-    echo $message2
+    echo $message1 > ~/job1/job1.txt
+    echo $message2 >> ~/job1/job1.txt
+    sleep 10
 
 ---
 
@@ -20,6 +21,7 @@ data:
   support.sh: |
     #!/bin/bash
     echo $message3
+    sleep 5
 
 ---
 
@@ -31,20 +33,35 @@ spec:
   containers:
   - name: job1
     image: job1
-    command: ["/bin/bash"]
+    command: ["/bin/bash", "-c"]
+    args: ["bash ~/job1/job1.job"]
     env:
     - name: message1
       value: "I'm env1"
     - name: message2
       value: "I'm env2"
-    - name: message3
-      value: "I'm env3"
-
     volumeMounts:
     - name: job1
       mountPath: ~/job1
+    - name: leader-pid-1
+      mountPath: ~/job1/leader
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  - name: job2
+    image: job2
+    command: ["/bin/bash", "-c"]
+    args: ["bash ~/support/support.sh"]
+    env:
+    - name: message3
+      value: "I'm env3"
+    volumeMounts:
     - name: support
       mountPath: ~/support
+    - name: leader-pid-2
+      mountPath: ~/job2/leader
     resources:
       limits:
         cpu: "1"
@@ -58,6 +75,10 @@ spec:
     - name: support
       configMap:
         name: support
+    - name: leader-pid-1
+      emptyDir: {}
+    - name: leader-pid-2
+      emptyDir: {}
 
         
   nodeSelector:
