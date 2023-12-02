@@ -1,19 +1,20 @@
 package mock
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
-	"context"
-	"github.com/virtual-kubelet-cmd/log"
-	// vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
+
+	"github.com/virtual-kubelet/virtual-kubelet/log"
+
+	// vklogv2 "github.com/virtual-kubelet/virtual-kubelet/log/klogv2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
-
 
 var varrun = os.Getenv("HOME")
 
@@ -32,9 +33,6 @@ const (
 	volumeSecret
 )
 
-
-
-
 // volumes inspects the PodSpec.Volumes attribute and returns a mapping with the volume's Name and the directory on-disk that
 // should be used for this. The on-disk structure is prepared and can be used.
 // which considered what volumes should be setup. Defaults to volumeAll
@@ -48,13 +46,10 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 	// 	WithField("podNamespace", pod.Namespace).
 	// 	WithField("podName", pod.Name)
 
-
 	vol := make(map[string]string)
 	log.G(ctx).Infof("inspecting volumes for pod %s", pod.Name)
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
 	log.G(ctx).Infof("uid: %s, gid: %s", uid, gid)
-
-
 
 	if err != nil {
 		return nil, err
@@ -86,7 +81,7 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 			if which != volumeAll && which != volumeSecret {
 				continue
 			}
-			
+
 			secret, err := p.rm.GetSecret(v.Secret.SecretName, pod.Namespace)
 			if v.Secret.Optional != nil && !*v.Secret.Optional && errors.IsNotFound(err) {
 				return nil, fmt.Errorf("secret %s is required by pod %s and does not exist", v.Secret.SecretName, pod.Name)
@@ -137,7 +132,7 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 			}
 
 			log.G(ctx).Infof("created %q for configmap %q", dir, v.Name)
-			
+
 			for k, v := range configMap.Data {
 				if err := writeFile(ctx, dir, k, uid, gid, []byte(v)); err != nil {
 					return nil, err
@@ -272,8 +267,6 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 				}
 			}
 
-
-
 		default:
 			return nil, fmt.Errorf("pod %s requires volume %s which is of an unsupported type", pod.Name, v.Name)
 		}
@@ -357,7 +350,7 @@ func setupPaths(pod *v1.Pod, path string, s string) (string, error) {
 	dir = filepath.Join(dir, path)
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
-	}	
+	}
 	dir = filepath.Join(dir, s)
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
