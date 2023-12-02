@@ -1,25 +1,25 @@
 package mock
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 	"time"
-	"os"
-	"bytes"
-	"github.com/virtual-kubelet-cmd/log"
+
+	"github.com/virtual-kubelet/virtual-kubelet/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sync"
 )
 
 // var home_dir = os.Getenv("HOME")
 var start_container = metav1.NewTime(time.Now())
 var home_dir = os.Getenv("HOME")
-
 
 func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
@@ -87,7 +87,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 					log.G(ctx).Infof("file name %s contains crt, key, or pem, skip it", f.Name())
 					continue
 				}
-				
+
 				// move f to the volume mount directory
 				err := moveFile(ctx, workdir, mountdir, f.Name())
 				if err != nil {
@@ -107,7 +107,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 					})
 					continue
 				}
-				
+
 				script := path.Join(mountdir, f.Name())
 				log.G(ctx).Infof("found script %s", script)
 				scripts[c.Name] = append(scripts[c.Name], script)
@@ -125,12 +125,14 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 }
 
 // run container in parallel
-func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) {
+func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) (chan error, chan v1.ContainerStatus) {
 	p.collectScripts(ctx, pod, vol)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 1)
+	cstatusChan := make(chan v1.ContainerStatus, 1)
 	for _, c := range pod.Spec.Containers {
+
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
@@ -164,9 +166,12 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 			env := c.Env // what is the type of c.Env? []v1.EnvVar
 			_, leader_pid, err := runScript(ctx, command, args, env)
+			// print pod.status.containerStatuses
 			if err != nil {
-				log.G(ctx).Infof("failed to run cmd %s, arg %s; error: %v", command, args, err)
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+				// report error to errChan
+				errChan <- err
+				// report container status to container_status
+				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
 					Ready:        false,
@@ -175,11 +180,11 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 						Terminated: &v1.ContainerStateTerminated{
 							Message:    fmt.Sprintf("failed to run cmd %s, arg %s; error: %v", command, args, err),
 							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "ContainerRunFailed",
+							Reason:     "RunScriptFailed",
 							StartedAt:  start_container,
 						},
 					},
-				})
+				}
 				return
 			}
 
@@ -188,8 +193,10 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			leader_pid_file := path.Join(c.Name + ".leader_pid")
 			err = writeLeaderPid(ctx, leader_pid_volmount, leader_pid_file, leader_pid)
 			if err != nil {
-				log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+				//report error to errChan
+				errChan <- err
+				// report container status to container_status
+				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
 					Ready:        false,
@@ -202,30 +209,48 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 							StartedAt:  start_container,
 						},
 					},
-				})
+				}
 				return
 			}
 
 			// update the container status to success
-			pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+			cstatusChan <- v1.ContainerStatus{
 				Name:         c.Name,
 				Image:        c.Image,
 				Ready:        true,
 				RestartCount: 0,
 				State: v1.ContainerState{
 					Terminated: &v1.ContainerStateTerminated{
-						Message:   fmt.Sprintf("container %s executed successfully", c.Name),
-						Reason:    "ContainerRunSuccess",
-						StartedAt: metav1.NewTime(time.Now()),
+						Message:    fmt.Sprintf("container %s executed successfully", c.Name),
+						Reason:     "ContainerRunSuccess",
+						FinishedAt: metav1.NewTime(time.Now()),
+						StartedAt:  start_container,
 					},
 				},
-			})
+			}
 		}(c)
 	}
+
 	go func() {
 		wg.Wait()
 		close(errChan)
+		close(cstatusChan) // close the channel
 	}()
+
+	return errChan, cstatusChan
+
+	// // update container status based on the output of the goroutines above
+	// for err := range errChan {
+	// 	if err != nil {
+	// 		log.G(ctx).Infof("error: %v", err)
+	// 		// update the container status to failed
+	// 	}
+	// }
+
+	// for cstatus := range cstatusChan {
+	// 	pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
+	// 	log.G(ctx).Infof("container status: %v", cstatus)
+	// }
 }
 
 func writeLeaderPid(ctx context.Context, leader_pid_volmount string, leader_pid_file string, leader_pid int) error {
@@ -246,9 +271,9 @@ func writeLeaderPid(ctx context.Context, leader_pid_volmount string, leader_pid_
 		log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
 		return err
 	}
-	log.G(ctx).Infof("successfully write leader pid to file %s", leader_pid_file)
+	log.G(ctx).Infof("successfully wrote leader pid to file %s", leader_pid_file)
 	return nil
-}	
+}
 
 func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (string, int, error) {
 	// run the script with the env variables set
@@ -260,21 +285,21 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		log.G(ctx).Infof("env name: %s, env value: %s", e.Name, e.Value)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
 	}
-	
+
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
 	log.G(ctx).Infof("start running command: %s, arg: %s", command, args)
+
 	err := cmd.Run()
 	if err != nil {
+		log.G(ctx).Infof("failed to run the cmd. error: %v", err)
 		return "", 0, err
 	}
 	leader_pid := cmd.Process.Pid
-	log.G(ctx).Infof("successfully ran command: %s, arg: %s, stdout: %s, stderr: %s", command, args, out.String(), stderr.String())
-	log.G(ctx).Infof("leader pid: %v", leader_pid)
-
+	log.G(ctx).Infof("successfully ran cmd pid: %v, stdout: %s, stderr: %s", leader_pid, out.String(), stderr.String())
 	return out.String(), leader_pid, nil
 }
 
@@ -293,7 +318,6 @@ func moveFile(ctx context.Context, src string, dst string, filename string) erro
 	}
 	return nil
 }
-
 
 // func (p *MockProvider) runBashScript(ctx context.Context, pod *v1.Pod, vol map[string]string) {
 // 	for _, c := range pod.Spec.Containers {
