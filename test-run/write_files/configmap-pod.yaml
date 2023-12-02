@@ -1,6 +1,27 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
+  name: leader-pid-1
+  namespace: default
+data:
+  job1.leader_pid: |
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: leader-pid-2
+  namespace: default
+data:
+  job2.leader_pid: |
+
+---
+
+
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
   name: job1
   namespace: default
 data:
@@ -8,7 +29,7 @@ data:
     #!/bin/bash
     echo $message1 > ~/job1/job1.txt
     echo $message2 >> ~/job1/job1.txt
-    sleep 10
+    # sleep 3
 
 ---
 
@@ -21,7 +42,7 @@ data:
   support.sh: |
     #!/bin/bash
     echo $message3
-    sleep 5
+    # sleep 5
 
 ---
 
@@ -31,41 +52,44 @@ metadata:
   name: multijobs
 spec:
   containers:
-  - name: job1
-    image: job1
-    command: ["/bin/bash", "-c"]
-    args: ["bash ~/job1/job1.job"]
-    env:
-    - name: message1
-      value: "I'm env1"
-    - name: message2
-      value: "I'm env2"
-    volumeMounts:
     - name: job1
-      mountPath: ~/job1
-    - name: leader-pid-1
-      mountPath: ~/job1/leader
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
+      image: job1
+      command: ["/bin/bash", "-c"]
+      args: ["bash ~/job1/job1.job"]
+      env:
+        - name: message1
+          value: "I'm env1"
+        - name: message2
+          value: "I'm env2"
 
-  - name: job2
-    image: job2
-    command: ["/bin/bash", "-c"]
-    args: ["bash ~/support/support.sh"]
-    env:
-    - name: message3
-      value: "I'm env3"
-    volumeMounts:
-    - name: support
-      mountPath: ~/support
-    - name: leader-pid-2
-      mountPath: ~/job2/leader
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
+      volumeMounts:
+        - name: job1
+          mountPath: ~/job1
+        - name: support
+          mountPath: ~/support
+        - name: leader-pid-1
+          mountPath: ~/job1/leader
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+    - name: job2
+      image: job2
+      command: ["/bin/bash", "-c"]
+      args: ["bash ~/support/support.sh"]
+      env:
+        - name: message3
+          value: "I'm env3"
+      volumeMounts:
+        - name: support
+          mountPath: ~/support
+        - name: leader-pid-2
+          mountPath: ~/job2/leader
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
 
 
   volumes:
@@ -76,17 +100,19 @@ spec:
       configMap:
         name: support
     - name: leader-pid-1
-      emptyDir: {}
+      configMap:
+        name: leader-pid-1
     - name: leader-pid-2
-      emptyDir: {}
+      configMap:
+        name: leader-pid-2
 
         
   nodeSelector:
     kubernetes.io/role: agent
   tolerations:
-  - key: "virtual-kubelet.io/provider"
-    value: "mock"
-    effect: "NoSchedule"
+    - key: "virtual-kubelet.io/provider"
+      value: "mock"
+      effect: "NoSchedule"
 
 
 ---
