@@ -255,18 +255,10 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 func writeLeaderPid(ctx context.Context, leader_pid_volmount string, leader_pid_file string, leader_pid int) error {
 	leader_pid_volmount = strings.Replace(leader_pid_volmount, "~", home_dir, 1)
-	// make sure the leader_pid_mount directory exists
-	err := exec.Command("mkdir", "-p", leader_pid_volmount).Run()
-	//replace the ~ with home_dir in leader_pid_volmount
-	if err != nil {
-		log.G(ctx).Infof("failed to create directory %s; error: %v", leader_pid_volmount, err)
-		return err
-	}
-
 	//write the leader pid to the leader_pid file
 	// name leader_pid file as container name + .leader_pid
 	leader_pid_file = path.Join(leader_pid_volmount, leader_pid_file)
-	err = ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
+	err := ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
 	if err != nil {
 		log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
 		return err
