@@ -58,13 +58,13 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 		log.G(ctx).Infof("inspecting volume %s", v.Name)
 		i := v.Name
 		switch {
-		// case v.HostPath != nil:
-		// 	if which != volumeAll {
-		// 		continue
-		// 	}
+		case v.HostPath != nil:
+			if which != volumeAll {
+				continue
+			}
 
-		// 	// v.Path should exist and be usuable by this pod. No checks are done here.
-		// 	vol[v.Name] = ""
+			// v.Path should exist and be usuable by this pod. No checks are done here.
+			vol[v.Name] = ""
 
 		case v.EmptyDir != nil:
 			if which != volumeAll {
@@ -293,7 +293,7 @@ func writeFile(ctx context.Context, dir, file, uid, gid string, data []byte) err
 	// 	WithField("dir", dir).
 	// 	WithField("file", file)
 
-	tmpfile, err := ioutil.TempFile(dir, "systemk.*.tmp")
+	tmpfile, err := ioutil.TempFile(dir, "vk.*.tmp")
 	if err != nil {
 		return err
 	}
