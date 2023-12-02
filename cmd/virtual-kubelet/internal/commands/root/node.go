@@ -15,7 +15,7 @@
 package root
 
 import (
-	"github.com/virtual-kubelet-cmd/errdefs"
+	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
 	corev1 "k8s.io/api/core/v1"
 )
 

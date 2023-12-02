@@ -14,16 +14,16 @@ import (
 	"runtime"
 
 	dto "github.com/prometheus/client_model/go"
-	"github.com/virtual-kubelet-cmd/errdefs"
 	"github.com/virtual-kubelet-cmd/internal/manager"
+	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
 
-	"github.com/virtual-kubelet-cmd/log"
-	// vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
+	"github.com/virtual-kubelet/virtual-kubelet/log"
+	// vklogv2 "github.com/virtual-kubelet/virtual-kubelet/log/klogv2"
 
 	// "github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
-	"github.com/virtual-kubelet-cmd/node/api"
-	stats "github.com/virtual-kubelet-cmd/node/api/statsv1alpha1"
-	"github.com/virtual-kubelet-cmd/trace"
+	"github.com/virtual-kubelet/virtual-kubelet/node/api"
+	stats "github.com/virtual-kubelet/virtual-kubelet/node/api/statsv1alpha1"
+	"github.com/virtual-kubelet/virtual-kubelet/trace"
 	syscall "golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -73,8 +73,6 @@ type MockConfig struct { //nolint:golint
 	Others     map[string]string `json:"others,omitempty"`
 	ProviderID string            `json:"providerID,omitempty"`
 }
-
-
 
 // NewMockProviderMockConfig creates a new MockV0Provider. Mock legacy provider does not implement the new asynchronous podnotifier interface
 func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32, rm *manager.ResourceManager) (*MockProvider, error) {
@@ -192,29 +190,26 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// 	},
 	// }
 
-
 	// add the pod status to conditions
 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:   v1.PodConditionType(v1.PodInitialized),
-		Status: v1.ConditionTrue,
-		Reason: "PodInitialized",
-		Message: "Pod is initialized",
+		Type:               v1.PodConditionType(v1.PodInitialized),
+		Status:             v1.ConditionTrue,
+		Reason:             "PodInitialized",
+		Message:            "Pod is initialized",
 		LastTransitionTime: metav1.NewTime(time.Now()),
-
 	})
 	// notify the pod
-	
 
-	// add volume mounts to the pod 
+	// add volume mounts to the pod
 	vol, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
 		//update pod status by adding the reason and message to conditions
 		pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-			Type:    v1.PodConditionType(v1.PodFailed),
-			Status:  v1.ConditionFalse,
-			Reason:  "VolumeMountFailed",
-			Message: fmt.Sprintf("failed to process Pod volumes: %v", err),
+			Type:               v1.PodConditionType(v1.PodFailed),
+			Status:             v1.ConditionFalse,
+			Reason:             "VolumeMountFailed",
+			Message:            fmt.Sprintf("failed to process Pod volumes: %v", err),
 			LastTransitionTime: metav1.NewTime(time.Now()),
 		})
 		// update pod status to failed
@@ -224,13 +219,12 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		p.notifier(pod)
 	}
 
-	
 	// update the pod status
 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:   v1.PodConditionType(v1.PodRunning),
-		Status: v1.ConditionTrue,
-		Reason: "PodRunning",
-		Message: "Pod is running",
+		Type:               v1.PodConditionType(v1.PodRunning),
+		Status:             v1.ConditionTrue,
+		Reason:             "PodRunning",
+		Message:            "Pod is running",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	})
 	pod.Status.Phase = v1.PodRunning
@@ -238,41 +232,51 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Message = "Pod is running"
 	p.notifier(pod)
 
-
 	// run the bash script in the pod
-	p.runScriptParallel(ctx, pod, vol)
+	// p.runScriptParallel(ctx, pod, vol)
+
+	errChan, cstatusChan := p.runScriptParallel(ctx, pod, vol)
+	for cstatus := range cstatusChan {
+		log.G(ctx).Infof("container status: %v", cstatus)
+		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
+	}
+	for err := range errChan {
+		log.G(ctx).Infof("error: %v", err)
+	}
+	log.G(ctx).Infof("container status: %v", pod.Status.ContainerStatuses)
 
 	// update the pod status to success if there is no reasons containing "Failed"
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if strings.Contains(containerStatus.State.Terminated.Reason, "Failed") {
 			pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-				Type:   v1.PodConditionType(v1.PodFailed),
-				Status: v1.ConditionFalse,
-				Reason: "ContainerFailed",
-				Message: "All or some commands failed to execute",
+				Type:               v1.PodConditionType(v1.PodFailed),
+				Status:             v1.ConditionFalse,
+				Reason:             "ContainerFailed",
+				Message:            "All or some commands failed to execute",
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
+
 			pod.Status.Phase = v1.PodFailed
 			pod.Status.Reason = "PodFailed"
 			pod.Status.Message = "All or some commands failed to execute"
 			p.notifier(pod)
-
+			log.G(ctx).Infof("pod status: %v", pod.Status)
 			return nil
 		}
 	}
 
 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:   v1.PodConditionType(v1.PodSucceeded),
-		Status: v1.ConditionTrue,
-		Reason: "PodSucceeded",
-		Message: "Commands succeeded to execute",
+		Type:               v1.PodConditionType(v1.PodSucceeded),
+		Status:             v1.ConditionTrue,
+		Reason:             "PodSucceeded",
+		Message:            "Commands succeeded to execute",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	})
+
 	pod.Status.Phase = v1.PodSucceeded
 	pod.Status.Reason = "PodSucceeded"
 	pod.Status.Message = "Commands succeeded to execute"
 	p.notifier(pod)
-
 
 	return nil
 }
@@ -322,13 +326,12 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 	// update the container status
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
-			ExitCode: 0,
+			ExitCode:   0,
 			FinishedAt: now,
-			Reason: "PodDeleted",
-			Message: "Pod is deleted",
+			Reason:     "PodDeleted",
+			Message:    "Pod is deleted",
 		}
 	}
-
 
 	delete(p.pods, key)
 	pod.Status.Phase = v1.PodSucceeded
@@ -667,7 +670,7 @@ func (p *MockProvider) generateMockMetrics(metricsMap map[string][]*dto.Metric, 
 	} else {
 		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
 	}
- 
+
 	return metricsMap
 }
 
@@ -802,10 +805,10 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 
 // write a function that runs bash command in the host shell and returns the output or error
 func runCommand(command string) (string, error) {
-	// setsid is used to run the command in a new session 
+	// setsid is used to run the command in a new session
 	cmd := exec.Command("/bin/sh", "-c", command)
 	// set session id for the command
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}	
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	out, err := cmd.Output()
 	if err != nil {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	vklogv2 "github.com/virtual-kubelet-cmd/log/klogv2"
+	vklogv2 "github.com/virtual-kubelet/virtual-kubelet/log/klogv2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
