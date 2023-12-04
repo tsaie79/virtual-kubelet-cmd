@@ -17,8 +17,6 @@ data:
 
 ---
 
-
-
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -27,22 +25,23 @@ metadata:
 data:
   job1.job: |
     #!/bin/bash
+    sleep 10
     echo $message1 > ~/job1/job1.txt
     echo $message2 >> ~/job1/job1.txt
-    # sleep 3
+
 
 ---
 
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: support
+  name: job2
   namespace: default
 data:
-  support.sh: |
+  job2.sh: |
     #!/bin/bash
-    echo $message3
-    # sleep 5
+    sleep 5
+    echo $message3 > ~/job2/job2.txt
 
 ---
 
@@ -65,8 +64,6 @@ spec:
       volumeMounts:
         - name: job1
           mountPath: ~/job1
-        - name: support
-          mountPath: ~/support
         - name: leader-pid-1
           mountPath: ~/job1/leader
       resources:
@@ -77,13 +74,13 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/support/support.sh"]
+      args: ["bash ~/job2/job2.sh"]
       env:
         - name: message3
           value: "I'm env3"
       volumeMounts:
-        - name: support
-          mountPath: ~/support
+        - name: job2
+          mountPath: ~/job2
         - name: leader-pid-2
           mountPath: ~/job2/leader
       resources:
@@ -96,9 +93,9 @@ spec:
     - name: job1 
       configMap:
         name: job1
-    - name: support
+    - name: job2
       configMap:
-        name: support
+        name: job2
     - name: leader-pid-1
       configMap:
         name: leader-pid-1
