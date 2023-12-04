@@ -168,114 +168,86 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 	p.pods[key] = pod
 
-	// now := metav1.NewTime(time.Now())
-	// pod.Status = v1.PodStatus{
-	// 	Phase:     v1.PodRunning,
-	// 	HostIP:    "1.2.3.4",
-	// 	PodIP:     "5.6.7.8",
-	// 	StartTime: &now,
-	// 	Conditions: []v1.PodCondition{
-	// 		{
-	// 			Type:   v1.PodInitialized,
-	// 			Status: v1.ConditionTrue,
-	// 		},
-	// 		{
-	// 			Type:   v1.PodReady,
-	// 			Status: v1.ConditionTrue,
-	// 		},
-	// 		{
-	// 			Type:   v1.PodScheduled,
-	// 			Status: v1.ConditionTrue,
-	// 		},
-	// 	},
-	// }
+	start_time := metav1.NewTime(time.Now())
 
 	// add the pod status to conditions
-	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:               v1.PodConditionType(v1.PodInitialized),
-		Status:             v1.ConditionTrue,
-		Reason:             "PodInitialized",
-		Message:            "Pod is initialized",
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
+	// pod.Status.Conditions = append(pod.Status.Conditions, 
+	// 	v1.PodCondition{
+	// 		Type:               v1.PodReady,
+	// 		Status:             v1.ConditionTrue,
+	// 		LastTransitionTime: metav1.NewTime(time.Now()),
+	// 	},
+	// 	v1.PodCondition{
+	// 		Type:               v1.PodInitialized,
+	// 		Status:             v1.ConditionTrue,
+	// 		LastTransitionTime: metav1.NewTime(time.Now()),
+	// 	},
+	// 	v1.PodCondition{
+	// 		Type:               v1.PodScheduled,
+	// 		Status:             v1.ConditionTrue,
+	// 		LastTransitionTime: metav1.NewTime(time.Now()),
+	// 	},
+	// )
+			
+
 	// notify the pod
 
 	// add volume mounts to the pod
-	vol, err := p.volumes(ctx, pod, volumeAll)
+	vol, err, pod := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
-		//update pod status by adding the reason and message to conditions
-		pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-			Type:               v1.PodConditionType(v1.PodFailed),
-			Status:             v1.ConditionFalse,
-			Reason:             "VolumeMountFailed",
-			Message:            fmt.Sprintf("failed to process Pod volumes: %v", err),
-			LastTransitionTime: metav1.NewTime(time.Now()),
-		})
-		// update pod status to failed
-		pod.Status.Phase = v1.PodFailed
-		pod.Status.Reason = "VolumeMountFailed"
-		pod.Status.Message = fmt.Sprintf("failed to process Pod volumes: %v", err)
-		p.notifier(pod)
 	}
+		//update pod status by adding the reason and message to conditions
+	// 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
+	// 		Type:               v1.PodConditionType(v1.PodFailed),
+	// 		Status:             v1.ConditionFalse,
+	// 		LastTransitionTime: metav1.NewTime(time.Now()),
+	// 	})
+	// 	// update pod status to failed
+	// 	pod.Status.Phase = v1.PodFailed
+	// 	pod.Status.Reason = string(v1.PodFailed)
+	// 	pod.Status.Message = fmt.Sprintf("failed to process Pod volumes: %v", err)
+	// 	p.notifier(pod)
+	// }
 
 	// update the pod status
-	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:               v1.PodConditionType(v1.PodRunning),
-		Status:             v1.ConditionTrue,
-		Reason:             "PodRunning",
-		Message:            "Pod is running",
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
-	pod.Status.Phase = v1.PodRunning
-	pod.Status.Reason = "PodRunning"
-	pod.Status.Message = "Pod is running"
-	p.notifier(pod)
+	// pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
+	// 	Type:               v1.PodConditionType(v1.PodRunning),
+	// 	Status:             v1.ConditionTrue,
+	// 	Reason:             "PodRunning",
+	// 	Message:            "Pod is running",
+	// 	LastTransitionTime: metav1.NewTime(time.Now()),
+	// })
+	// pod.Status.Phase = v1.PodRunning
+	// pod.Status.Reason = "PodRunning"
+	// pod.Status.Message = "Pod is running"
+	// p.notifier(pod)
 
-	// run the bash script in the pod
-	// p.runScriptParallel(ctx, pod, vol)
 
 	errChan, cstatusChan := p.runScriptParallel(ctx, pod, vol)
 	for cstatus := range cstatusChan {
-		log.G(ctx).Infof("container status: %v", cstatus)
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
 	}
 	for err := range errChan {
 		log.G(ctx).Infof("error: %v", err)
 	}
-	log.G(ctx).Infof("container status: %v", pod.Status.ContainerStatuses)
 
 	// update the pod status to success if there is no reasons containing "Failed"
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if strings.Contains(containerStatus.State.Terminated.Reason, "Failed") {
-			pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-				Type:               v1.PodConditionType(v1.PodFailed),
-				Status:             v1.ConditionFalse,
-				Reason:             "ContainerFailed",
-				Message:            "All or some commands failed to execute",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			})
-
 			pod.Status.Phase = v1.PodFailed
-			pod.Status.Reason = "PodFailed"
-			pod.Status.Message = "All or some commands failed to execute"
+			pod.Status.Message = string(v1.PodFailed)
 			p.notifier(pod)
 			log.G(ctx).Infof("pod status: %v", pod.Status)
 			return nil
 		}
 	}
 
-	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-		Type:               v1.PodConditionType(v1.PodSucceeded),
-		Status:             v1.ConditionTrue,
-		Reason:             "PodSucceeded",
-		Message:            "Commands succeeded to execute",
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
-
 	pod.Status.Phase = v1.PodSucceeded
 	pod.Status.Reason = "PodSucceeded"
 	pod.Status.Message = "Commands succeeded to execute"
+	pod.Status.StartTime = &start_time
+
 	p.notifier(pod)
 
 	return nil
