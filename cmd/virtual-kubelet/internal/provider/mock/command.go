@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"github.com/containerd/fifo"
 	"github.com/virtual-kubelet/virtual-kubelet/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -167,6 +167,15 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 			env := c.Env // what is the type of c.Env? []v1.EnvVar
 			_, leader_pid, err := runScript(ctx, command, args, env)
+
+			// if env contains fifo = true, write the command to the fifo
+			for _, e := range env {
+				if e.Name == "fifo" && e.Value == "true" {
+					writeCmdToFifo(ctx, command, args)
+				}
+			}
+
+
 			// print pod.status.containerStatuses
 			if err != nil {
 				// report error to errChan
@@ -295,6 +304,54 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	log.G(ctx).Infof("successfully ran cmd pid: %v, stdout: %s, stderr: %s", leader_pid, out.String(), stderr.String())
 	return out.String(), leader_pid, nil
 }
+
+
+func writeCmdToFifo(ctx context.Context, command []string, args string) error {
+    fifoPath := home_dir + "/hostpipe"
+    // ctx := context.Background()
+    fn := fifoPath + "/vk-cmd"
+    flag := syscall.O_WRONLY
+    perm := os.FileMode(0666)
+
+    fifo, err := fifo.OpenFifo(ctx, fn, flag, perm)
+    if err != nil {
+        fmt.Printf("Error opening FIFO: %v\n", err)
+        return err
+    }
+
+    cmdString := strings.Join(command, " ")
+    argsString := strings.Join(args, " ")
+    //use single quotes to around the argsString to prevent shell from interpreting the args
+    cmd := cmdString + " '" + argsString + "'"
+    fmt.Printf("cmd: %s\n", cmd)
+
+    _, err = fifo.Write([]byte(cmd))
+    if err != nil {
+        fmt.Printf("Error writing to FIFO: %v\n", err)
+        return err
+    }
+    return nil
+}
+
+
+	// run the script with the env variables set
+	// run the command like [command[0], command[1], ...] args
+	command = append(command, args)
+	cmd := exec.Command(command[0], command[1:]...)
+	// write to fifo
+	_, err = fifo.WriteString([]byte(cmd))
+	if err != nil {
+		fmt.Printf("Error writing to FIFO: %v\n", err)
+		return err
+	}
+	return nil
+
+
+
+
+
+
+
 
 func moveFile(ctx context.Context, src string, dst string, filename string) error {
 	// create the destination directory if it does not exist
