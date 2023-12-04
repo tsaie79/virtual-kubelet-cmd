@@ -17,11 +17,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// var home_dir = os.Getenv("HOME")
-var start_container = metav1.NewTime(time.Now())
+
 var home_dir = os.Getenv("HOME")
 
 func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) {
+	time_start := metav1.NewTime(time.Now())
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
 	scripts := make(map[string][]string)
 	for _, c := range pod.Spec.Containers {
@@ -50,8 +50,8 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 						Terminated: &v1.ContainerStateTerminated{
 							Message:    "volume mount not found in the volume map",
 							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "VolumeMountNotFound",
-							StartedAt:  start_container,
+							Reason:     string(v1.PodFailed),
+							StartedAt:  time_start,
 						},
 					},
 				})
@@ -72,8 +72,8 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 						Terminated: &v1.ContainerStateTerminated{
 							Message:    fmt.Sprintf("failed to read workdir %s; error: %v", workdir, err),
 							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "WorkdirReadFailed",
-							StartedAt:  start_container,
+							Reason:     string(v1.PodFailed),
+							StartedAt:  time_start,
 						},
 					},
 				})
@@ -100,8 +100,8 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 							Terminated: &v1.ContainerStateTerminated{
 								Message:    fmt.Sprintf("failed to move file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err),
 								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     "FileMoveFailed",
-								StartedAt:  start_container,
+								Reason:     string(v1.PodFailed),
+								StartedAt:  time_start,
 							},
 						},
 					})
@@ -129,8 +129,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	p.collectScripts(ctx, pod, vol)
 
 	var wg sync.WaitGroup
-	errChan := make(chan error, 1)
-	cstatusChan := make(chan v1.ContainerStatus, 1)
+	errChan := make(chan error, len(pod.Spec.Containers))
+	cstatusChan := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
+	time_start := metav1.NewTime(time.Now())
 	for _, c := range pod.Spec.Containers {
 
 		wg.Add(1)
@@ -180,8 +181,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 						Terminated: &v1.ContainerStateTerminated{
 							Message:    fmt.Sprintf("failed to run cmd %s, arg %s; error: %v", command, args, err),
 							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "RunScriptFailed",
-							StartedAt:  start_container,
+							Reason:     string(v1.PodFailed),
+							StartedAt:  time_start,
 						},
 					},
 				}
@@ -205,8 +206,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 						Terminated: &v1.ContainerStateTerminated{
 							Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
 							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     "LeaderPidWriteFailed",
-							StartedAt:  start_container,
+							Reason:     string(v1.PodFailed),
+							StartedAt:  time_start,
 						},
 					},
 				}
@@ -222,9 +223,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				State: v1.ContainerState{
 					Terminated: &v1.ContainerStateTerminated{
 						Message:    fmt.Sprintf("container %s executed successfully", c.Name),
-						Reason:     "ContainerRunSuccess",
+						Reason:     string(v1.PodSucceeded),
 						FinishedAt: metav1.NewTime(time.Now()),
-						StartedAt:  start_container,
+						StartedAt:  time_start,
 					},
 				},
 			}
