@@ -61,7 +61,7 @@ func writeCmdToFifo(command []string, args []string, env map[string]interface{})
 func main() {
     cmds := []string{"/bin/bash", "-c"}
     args := []string{"bash /home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/script.sh"}
-    env := map[string]interface{}{"message": "hello world"}
+    env := map[string]interface{}{"message": "hello", "number": 123, "float": 1.23}
     err := writeCmdToFifo(cmds, args, env)
     if err != nil {
         fmt.Printf("Error writing to FIFO: %v\n", err)
