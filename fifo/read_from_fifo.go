@@ -2,18 +2,41 @@ package main
 
 import (
     "context"
-    "fmt"
     // "io"
     "os"
     "syscall"
 	"github.com/containerd/fifo"
 	"os/exec"
+	"errors"
+	"io"
+	"fmt"
+	"time"
 )
 
+
+func runCmd(cmd string) {
+	time.Sleep(1 * time.Second)
+	env := os.Environ()
+	cmd = cmd + fmt.Sprintf(" > %s/hostpipe/stdout 2> %s/hostpipe/stderr", os.Getenv("HOME"), os.Getenv("HOME"))
+	fmt.Printf("cmd: %s\n", cmd)
+	cmd2 := exec.Command("/bin/bash", "-c", cmd)
+	cmd2.Env = env
+	cmd2.Stdout = os.Stdout
+	cmd2.Stderr = os.Stderr
+	err := cmd2.Run()
+	if err != nil {
+		fmt.Printf("Error running command: %v\n", err)
+		return
+	}
+}
+
+
+
+
 func readCmdFromFifo() {
-    fifoPath := "/workspaces/virtual-kubelet-cmd/fifo/hostpipe"
+	fifoPath := os.Getenv("HOME") + "/hostpipe"
     ctx := context.Background()
-    fn := fifoPath + "/myFifo"
+    fn := fifoPath + "/vk-cmd"
     flag := syscall.O_RDONLY | syscall.O_CREAT 
     perm := os.FileMode(0666)
 
@@ -25,39 +48,24 @@ func readCmdFromFifo() {
 			return
 		}
 		// defer fifo.Close()
-
 		buf := make([]byte, 1024)
 		n, err := fifo.Read(buf)
 		if err != nil {
-			fmt.Printf("Error reading from FIFO: %v\n", err)
-			return
-		}
-		fmt.Printf("Read %d bytes from FIFO: %s\n", n, buf[:n])
-
-		// run cmd from fifo output
-		read_cmd := string(buf[:n])
-		env := os.Environ()
-		cmd := exec.Command(read_cmd)
-		cmd.Env = env
-
-		// cmd.Env = append(cmd.Env, "message=from fifo")
-		// cmd.Env = append(cmd.Env, "message2=from fifo2")
-
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		
-		if err != nil {
-			fmt.Printf("Error running command: %v\n", err)
-			return
+			if errors.Is(err, io.EOF) {
+				// EOF error, break the loop
+				fmt.Println("EOF reached, breaking the loop")
+				continue
+			} else {
+				fmt.Printf("Error reading from FIFO: %v\n", err)
+				return
+			}
 		}
 
-		//write stdout and stderr to files via 
-
-
-		// get pid of cmd
-		fmt.Printf("PID: %d\n", cmd.Process.Pid)
+		go runCmd(string(buf[:n]))
 		fifo.Close()
+		fmt.Printf("Read %d bytes from FIFO: %s\n", n, buf[:n])
+		// run cmd from fifo output
+		// fifo.Close()
 	}
 }
 
