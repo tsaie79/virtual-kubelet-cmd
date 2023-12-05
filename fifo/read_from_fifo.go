@@ -11,7 +11,7 @@ import (
 )
 
 func readCmdFromFifo() {
-    fifoPath := "/home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/hostpipe"
+    fifoPath := "/workspaces/virtual-kubelet-cmd/fifo/hostpipe"
     ctx := context.Background()
     fn := fifoPath + "/myFifo"
     flag := syscall.O_RDONLY | syscall.O_CREAT 
