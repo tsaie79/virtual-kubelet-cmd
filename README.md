@@ -1,11 +1,24 @@
 # Features of this branch
 This branch is to support the following features:
 - [x] Support `configMap` and `secret` as volume types to write scripts at which the pod is launched.
-- [x] Use `configMap` and `secret` to define the user's workload. The `command`, `image`, and `mountPath` are required, but they have no effect. Mounted path is defined automatically by the vk.
-- [x] Support multiple jobs in a single pod.
+- [x] Use `volumes` to write the scripts.
+- [x] Use `volumeMounts` to move the scripts to the `mountPath`.
+- [x] Use `command` to execute the scripts.
+- [x] Support `env` to pass the environment variables to the scripts in a container.
 
 
-# How to use volume to mount configMap and secret (creating scripts)
+# How to use configMap as a volume type to write scripts
+The goal is to use `configMap` to define the user's job and support scripts. Any `configMap` in `Volumes` will be created as a script by the vk. However, only those in `volumeMounts` AND with file names ended with `.job` will be executed by the vk. The command to execute the scripts is defined in the `command` field of the `container`.
+
+Since each container has its own control of resources, one should only include one `job-script.job` in a single container. The support scripts, such as `support.sh`, can be included in the same container, but it is recommended to be light-weighted. Multiple jobs can be executed in a single pod by adding multiple containers.
+
+## The thumb rules of preparing the scripts for the vk
+1. The `configMap` in `Volumes` will be created as a script by the vk.
+2. The volume in `volumeMounts` AND with file names ended with `.job` will be executed by the vk.
+4. The 
+3. The command to execute the scripts is defined in the `command` field of the `container`.
+
+
 The mounted path is defined automatically by the vk, following the rule of:
 ```text
 $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
@@ -13,9 +26,7 @@ $HOME/$pod_name/$type_of_volume/$volume_name/$script_name
 where, 
 1. `$type_of_volume` is either `configmaps` or `secrets`.
 2. `$volume_name` is the name of the `Volumes:Name`.
-3. `$script_name` is the name of the `ConfigMap:Data` or `Secret:Data`. To be a valid script, the name should end with `.sh`.
-4. Notice the `MountPath` is not used in this case.
-
+3. `$script_name` is the name of the `ConfigMap:Data` or `Secret:Data`.
 
 For example, take the following `pod.yaml` as an example:
 ```yaml
@@ -25,7 +36,7 @@ metadata:
   name: user1
   namespace: default
 data:
-  hello.sh: |
+  hello.job: |
     #!/bin/bash
     echo "Hello World" > ~/test1.txt && sleep 10
 ---
@@ -37,10 +48,11 @@ spec:
   containers:
   - name: job-user1
     image: user1 #required but no effect
-    command: [""] #required but no effect
+    command: ["/bin/bash"] #required but no effect
     volumeMounts:
     - name: user1
       mountPath: "/no/effect" #required but no effect
+
   volumes:
     - name: user1
       configMap:
@@ -70,27 +82,28 @@ One can mount multiple `configMap` to a single pod, and then execute them within
 
 ## Example of multiple jobs in a single pod
 
-There are two users, `u1` and `u2`. User `u1` has two jobs, `u1-j1` and `u1-j2`. User `u2` has one job, `u2-j1`. Jobs are defined by `configMap` and `volume`, while `container` is defined by user.
+There are two job scripts, `job1.job` and `job2.job`, and one support script, `support.sh`. The `job1.job` and `job2.job` are mounted to the containers `job1` and `job2`, respectively. The `support.sh` is mounted the container `job1`. The `job1` and `job2` are executed parallelly, and the `support.sh` is executed after `job1` is finished.
+
+
+
 ```yaml
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: u1-j1
+  name: job-1
   namespace: default
 data:
-  u1-j1.sh: |
-    #!/bin/bash
+  job1.job: |
      sleep 1
      sleep 2
 ---
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: u1-j2
+  name: job-2
   namespace: default
 data :
-  u1-j2.sh: |
-    #!/bin/bash
+  job2.job: |
      sleep 3
      sleep 4
      
@@ -99,13 +112,11 @@ data :
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: u2-j1
+  name: support
   namespace: default
 data:
-  u2-j1.sh: |
-    #!/bin/bash
-     sleep 5
-     sleep 6
+  support.sh: |
+    echo "support" > ~/support.txt && sleep 10
 
 ---
 
@@ -115,36 +126,34 @@ metadata:
   name: multijobs
 spec:
   containers:
-  - name: u1
-    image: u1
-    command: [""]
+  - name: job1
+    image: job1
+    command: ["/bin/bash"]
     volumeMounts:
-    - name: u1-j1
-      mountPath: u1-j1
-    - name: u1-j2
-      mountPath: u1-j2
+    - name: job-1
+      mountPath: /job1
+    - name: support
+      mountPath: /support
 
-  - name: u2
-    image: u2
-    command: [""]
+  - name: job2
+    image: job2
+    command: ["/bin/bash"]
     volumeMounts:
-    - name: u2-j1
-      mountPath: u2-j1
+    - name: job-2
+      mountPath: /job2
+
 
   volumes:
-    - name: u1-j1
+    - name: job-1
       configMap:
-        name: u1-j1
-    
-    - name: u1-j2
+        name:  job-1
+    - name: job-2
       configMap:
-        name: u1-j2
+        name:  job-2
+    - name: support
+      configMap:
+        name:  support
 
-    - name: u2-j1
-      configMap:
-        name:  u2-j1
-
-        
   nodeSelector:
     kubernetes.io/role: agent
   tolerations:
