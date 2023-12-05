@@ -15,7 +15,6 @@ import (
 
 
 func runCmd(cmd string) {
-	time.Sleep(1 * time.Second)
 	env := os.Environ()
 	cmd = cmd + fmt.Sprintf(" > %s/hostpipe/stdout 2> %s/hostpipe/stderr", os.Getenv("HOME"), os.Getenv("HOME"))
 	fmt.Printf("cmd: %s\n", cmd)
@@ -62,6 +61,7 @@ func readCmdFromFifo() {
 		}
 
 		go runCmd(string(buf[:n]))
+		time.Sleep(1 * time.Second)
 		fifo.Close()
 		fmt.Printf("Read %d bytes from FIFO: %s\n", n, buf[:n])
 		// run cmd from fifo output
