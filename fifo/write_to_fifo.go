@@ -13,7 +13,7 @@ import (
 
 
 func writeCmdToFifo(command []string, args []string, env map[string]interface{}) error {
-    fifoPath := "/home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/hostpipe"
+    fifoPath := "/workspaces/virtual-kubelet-cmd/fifo/hostpipe"
     ctx := context.Background()
     fn := fifoPath + "/myFifo"
     flag := syscall.O_WRONLY
@@ -60,7 +60,7 @@ func writeCmdToFifo(command []string, args []string, env map[string]interface{})
 
 func main() {
     cmds := []string{"/bin/bash", "-c"}
-    args := []string{"bash /home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/script.sh"}
+    args := []string{"bash /workspaces/virtual-kubelet-cmd/fifo/script.sh"}
     env := map[string]interface{}{"message": "hello", "number": 123, "float": 1.23}
     err := writeCmdToFifo(cmds, args, env)
     if err != nil {
