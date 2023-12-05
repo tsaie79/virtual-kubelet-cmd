@@ -1,71 +1,37 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: leader-pid-1
-  namespace: default
-data:
-  job1.leader_pid: |
-
----
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: leader-pid-2
-  namespace: default
-data:
-  job2.leader_pid: |
-
----
-
-kind: ConfigMap
-apiVersion: v1
-metadata:
   name: job1
   namespace: default
 data:
-  job1.job: |
+  stress.sh: |
     #!/bin/bash
-    sleep 10
-    echo $message1 > ~/job1/job1.txt
-    echo $message2 >> ~/job1/job1.txt
-
-
----
-
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: job2
-  namespace: default
-data:
-  job2.sh: |
-    #!/bin/bash
-    sleep 5
-    echo $message3 > ~/job2/job2.txt
+    strss --cpu $cpu --timeout $timeout
 
 ---
 
 apiVersion: v1
 kind: Pod
 metadata:
-  name: multijobs
+  name: stress
 spec:
   containers:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/job1/job1.job"]
+      args: ["bash ~/hostpipe/job1/stress.sh"]
       env:
-        - name: message1
-          value: "I'm env1"
-        - name: message2
-          value: "I'm env2"
+        - name: fifo
+          value: "true"
+        - name: cpu
+          value: "4"
+        - name: timeout
+          value: 60s
 
       volumeMounts:
         - name: job1
-          mountPath: ~/job1
-        - name: leader-pid-1
-          mountPath: ~/job1/leader
+          mountPath: ~/hostpipe/job1
+
       resources:
         limits:
           cpu: "1"
@@ -74,15 +40,19 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/job2/job2.sh"]
+      args: ["bash ~/hostpipe/job2/stress.sh"]
       env:
-        - name: message3
-          value: "I'm env3"
+        - name: fifo
+          value: "true"
+        - name: cpu
+          value: "4"
+        - name: timeout
+          value: 60s
+
       volumeMounts:
-        - name: job2
-          mountPath: ~/job2
-        - name: leader-pid-2
-          mountPath: ~/job2/leader
+        - name: job1
+          mountPath: ~/hostpipe/job2
+
       resources:
         limits:
           cpu: "1"
@@ -93,16 +63,6 @@ spec:
     - name: job1 
       configMap:
         name: job1
-    - name: job2
-      configMap:
-        name: job2
-    - name: leader-pid-1
-      configMap:
-        name: leader-pid-1
-    - name: leader-pid-2
-      configMap:
-        name: leader-pid-2
-
         
   nodeSelector:
     kubernetes.io/role: agent
