@@ -13,10 +13,11 @@ import (
 
 
 func writeCmdToFifo(command []string, args []string, env map[string]interface{}) error {
-    fifoPath := "/workspaces/virtual-kubelet-cmd/fifo/hostpipe"
+	homeDir := os.Getenv("HOME")
+	fifoPath := homeDir + "/hostpipe"
     ctx := context.Background()
-    fn := fifoPath + "/myFifo"
-    flag := syscall.O_WRONLY
+    fn := fifoPath + "/vk-cmd"
+    flag := syscall.O_WRONLY 
     perm := os.FileMode(0666)
 
     fifo, err := fifo.OpenFifo(ctx, fn, flag, perm)
@@ -60,8 +61,9 @@ func writeCmdToFifo(command []string, args []string, env map[string]interface{})
 
 func main() {
     cmds := []string{"/bin/bash", "-c"}
-    args := []string{"bash /workspaces/virtual-kubelet-cmd/fifo/script.sh"}
+    args := []string{"bash /home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/script.sh"}
     env := map[string]interface{}{"message": "hello", "number": 123, "float": 1.23}
+    // env := map[string]interface{}{}
     err := writeCmdToFifo(cmds, args, env)
     if err != nil {
         fmt.Printf("Error writing to FIFO: %v\n", err)
