@@ -15,6 +15,7 @@ import (
 	"github.com/virtual-kubelet/virtual-kubelet/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"syscall"
 )
 
 
@@ -89,7 +90,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 				}
 
 				// move f to the volume mount directory
-				err := moveFile(ctx, workdir, mountdir, f.Name())
+				err := copyFile(ctx, workdir, mountdir, f.Name())
 				if err != nil {
 					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
 						Name:         c.Name,
@@ -98,7 +99,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 						RestartCount: 0,
 						State: v1.ContainerState{
 							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to move file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err),
+								Message:    fmt.Sprintf("failed to copy file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err),
 								FinishedAt: metav1.NewTime(time.Now()),
 								Reason:     string(v1.PodFailed),
 								StartedAt:  time_start,
@@ -109,7 +110,6 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 				}
 
 				script := path.Join(mountdir, f.Name())
-				log.G(ctx).Infof("found script %s", script)
 				scripts[c.Name] = append(scripts[c.Name], script)
 				// if strings.HasSuffix(f.Name(), ".job") {
 				// 	script := path.Join(mountdir, f.Name())
@@ -132,47 +132,57 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	errChan := make(chan error, len(pod.Spec.Containers))
 	cstatusChan := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
 	time_start := metav1.NewTime(time.Now())
-	for _, c := range pod.Spec.Containers {
 
+	for _, c := range pod.Spec.Containers {
+		var (
+				leader_pid int = 0
+				err        error
+				
+			)
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
 			log.G(ctx).Infof("---------------container name: %s", c.Name)
-			var leader_pid_volmount string
-			for _, volMount := range c.VolumeMounts {
-				if strings.Contains(volMount.Name, "leader-pid") {
-					leader_pid_volmount = volMount.MountPath
-				}
-			}
-			if leader_pid_volmount == "" {
-				log.G(ctx).Infof("leader pid volume mount not found for container %s", c.Name)
-				return
-			}
+
 			//define command to run the bash script based on c.Command of list of strings
 			var command = c.Command
 			if len(command) == 0 {
 				log.G(ctx).Infof("no command found for container %s", c.Name)
+				err = fmt.Errorf("no command found for container %s", c.Name)
+				errChan <- err
 				return
 			}
 
 			var args string
 			if len(c.Args) == 0 {
 				log.G(ctx).Infof("no args found for container %s", c.Name)
+				err = fmt.Errorf("no args found for container %s", c.Name)
+				errChan <- err
 				return
 			} else {
 				args = strings.Join(c.Args, " ")
-				// if args contains "~", replace it with home_dir
-				args = strings.Replace(args, "~", home_dir, 1)
 			}
 
 			env := c.Env // what is the type of c.Env? []v1.EnvVar
-			_, leader_pid, err := runScript(ctx, command, args, env)
-
 			// if env contains fifo = true, write the command to the fifo
+	
+			// search the env for fifo = true
+			runWithFifo := false
 			for _, e := range env {
 				if e.Name == "fifo" && e.Value == "true" {
-					writeCmdToFifo(ctx, command, args)
+					log.G(ctx).Infof("fifo env found for container %s", c.Name)
+					runWithFifo = true					
+					break
 				}
+			}
+
+			if runWithFifo {
+				log.G(ctx).Infof("fifo env found for container %s", c.Name)
+				err = writeCmdToFifo(ctx, command, args, env)
+			}else{
+				log.G(ctx).Infof("fifo env not found for container %s", c.Name)
+				args = strings.Replace(args, "~", home_dir, 1)
+				_, leader_pid, err = runScript(ctx, command, args, env)
 			}
 
 
@@ -200,28 +210,45 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 			//write the leader pid to the leader_pid file
 			// name leader_pid file as container name + .leader_pid
-			leader_pid_file := path.Join(c.Name + ".leader_pid")
-			err = writeLeaderPid(ctx, leader_pid_volmount, leader_pid_file, leader_pid)
-			if err != nil {
-				//report error to errChan
-				errChan <- err
-				// report container status to container_status
-				cstatusChan <- v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     string(v1.PodFailed),
-							StartedAt:  time_start,
-						},
-					},
+			if !runWithFifo {
+				var leader_pid_volmount string
+				for _, volMount := range c.VolumeMounts {
+					if strings.Contains(volMount.Name, "leader-pid") {
+						leader_pid_volmount = volMount.MountPath
+					}
 				}
-				return
+
+				if leader_pid_volmount == "" {
+					log.G(ctx).Infof("leader pid volume mount not found for container %s", c.Name)
+					err = fmt.Errorf("leader pid volume mount not found for container %s", c.Name)
+					errChan <- err
+					return
+				}
+
+				leader_pid_file := path.Join(c.Name + ".leader_pid")
+				err = writeLeaderPid(ctx, leader_pid_volmount, leader_pid_file, leader_pid)
+				if err != nil {
+					//report error to errChan
+					errChan <- err
+					// report container status to container_status
+					cstatusChan <- v1.ContainerStatus{
+						Name:         c.Name,
+						Image:        c.Image,
+						Ready:        false,
+						RestartCount: 0,
+						State: v1.ContainerState{
+							Terminated: &v1.ContainerStateTerminated{
+								Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
+								FinishedAt: metav1.NewTime(time.Now()),
+								Reason:     string(v1.PodFailed),
+								StartedAt:  time_start,
+							},
+						},
+					}
+					return
+				}
 			}
+
 
 			// update the container status to success
 			cstatusChan <- v1.ContainerStatus{
@@ -306,54 +333,47 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 }
 
 
-func writeCmdToFifo(ctx context.Context, command []string, args string) error {
-    fifoPath := home_dir + "/hostpipe"
-    // ctx := context.Background()
+func writeCmdToFifo(ctx context.Context, command []string, args string, env []v1.EnvVar) error {
+	homeDir := os.Getenv("HOME")
+	fifoPath := homeDir + "/hostpipe"
     fn := fifoPath + "/vk-cmd"
-    flag := syscall.O_WRONLY
+    flag := syscall.O_WRONLY 
     perm := os.FileMode(0666)
 
     fifo, err := fifo.OpenFifo(ctx, fn, flag, perm)
     if err != nil {
-        fmt.Printf("Error opening FIFO: %v\n", err)
+		log.G(ctx).Infof("failed to open fifo %s; error: %v\n", fn, err)
         return err
     }
 
-    cmdString := strings.Join(command, " ")
-    argsString := strings.Join(args, " ")
+    // write env to a single string like "export key1='value1'&& export key2='value2'..."
+    var envString string
+    for _, e := range env {
+        // if type of value is string, use single quotes to prevent shell from interpreting the value
+		envString += "export " + e.Name + "=\"" + e.Value + "\" && "
+        //if type of value is int or float, no quotes are needed
+    }
+
+
     //use single quotes to around the argsString to prevent shell from interpreting the args
-    cmd := cmdString + " '" + argsString + "'"
-    fmt.Printf("cmd: %s\n", cmd)
+	cmdString := strings.Join(command, " ")
+    cmd := cmdString + " '" + envString + args + "'"
+
+	log.G(ctx).Infof("Running cmd: %s\n", cmd)
 
     _, err = fifo.Write([]byte(cmd))
     if err != nil {
-        fmt.Printf("Error writing to FIFO: %v\n", err)
+		log.G(ctx).Infof("failed to write to fifo %s; error: %v\n", fn, err)
         return err
     }
+
     return nil
 }
 
 
-	// run the script with the env variables set
-	// run the command like [command[0], command[1], ...] args
-	command = append(command, args)
-	cmd := exec.Command(command[0], command[1:]...)
-	// write to fifo
-	_, err = fifo.WriteString([]byte(cmd))
-	if err != nil {
-		fmt.Printf("Error writing to FIFO: %v\n", err)
-		return err
-	}
-	return nil
 
 
-
-
-
-
-
-
-func moveFile(ctx context.Context, src string, dst string, filename string) error {
+func copyFile(ctx context.Context, src string, dst string, filename string) error {
 	// create the destination directory if it does not exist
 	err := exec.Command("mkdir", "-p", dst).Run()
 	if err != nil {
@@ -361,9 +381,9 @@ func moveFile(ctx context.Context, src string, dst string, filename string) erro
 		return err
 	}
 	//mv the file to the destination directory
-	err = exec.Command("mv", path.Join(src, filename), path.Join(dst, filename)).Run()
+	err = exec.Command("cp", path.Join(src, filename), path.Join(dst, filename)).Run()
 	if err != nil {
-		log.G(ctx).Infof("failed to move file %s to %s; error: %v", path.Join(src, filename), path.Join(dst, filename), err)
+		log.G(ctx).Infof("failed to copy file %s to %s; error: %v", path.Join(src, filename), path.Join(dst, filename), err)
 		return err
 	}
 	return nil
