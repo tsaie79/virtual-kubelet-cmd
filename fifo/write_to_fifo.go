@@ -3,11 +3,9 @@ package main
 import (
     "context"
     "fmt"
-    // "io"
     "os"
     "syscall"
 	"github.com/containerd/fifo"
-	// "os/exec"
     "strings"
 )
 
@@ -61,8 +59,8 @@ func writeCmdToFifo(command []string, args []string, env map[string]interface{})
 
 func main() {
     cmds := []string{"/bin/bash", "-c"}
-    args := []string{"bash /home/jeng-yuantsai/Documents/JIRIAF/virtual-kubelet-cmd/fifo/script.sh"}
-    env := map[string]interface{}{"message": "hello", "number": 123, "float": 1.23}
+    args := []string{"bash /workspaces/virtual-kubelet-cmd/fifo/script.sh"}
+    env := map[string]interface{}{"cpu": "4", "timeout": "60s"}
     // env := map[string]interface{}{}
     err := writeCmdToFifo(cmds, args, env)
     if err != nil {
