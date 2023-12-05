@@ -59,13 +59,12 @@ func readCmdFromFifo() {
 				return
 			}
 		}
+		fmt.Printf("Read %d bytes from FIFO: %s\n", n, buf[:n])
 
 		go runCmd(string(buf[:n]))
 		time.Sleep(1 * time.Second)
 		fifo.Close()
-		fmt.Printf("Read %d bytes from FIFO: %s\n", n, buf[:n])
-		// run cmd from fifo output
-		// fifo.Close()
+
 	}
 }
 
