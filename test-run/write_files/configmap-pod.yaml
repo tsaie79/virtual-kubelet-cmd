@@ -6,7 +6,8 @@ metadata:
 data:
   stress.sh: |
     #!/bin/bash
-    stress --cpu $cpu --timeout $timeout
+    shifter --image="jlabtsai/stress:p1" --entrypoint
+    # stress --cpu $cpu --timeout $timeout
 
 ---
 kind: ConfigMap
@@ -37,7 +38,7 @@ spec:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/job1/stress.sh >> ~/job1/stdout 2>> ~/job1/stderr"]
+      args: ["bash ~/testvk/job1/stress.sh >> ~/testvk/job1/stdout 2>> ~/testvk/job1/stderr"]
       env:
         - name: fifo
           value: "false"
@@ -48,9 +49,9 @@ spec:
 
       volumeMounts:
         - name: job1
-          mountPath: ~/job1
+          mountPath: ~/testvk/job1
         - name: pgid-1
-          mountPath: ~/job1/pgid
+          mountPath: ~/testvk/job1/pgid
 
       resources:
         limits:
@@ -60,7 +61,7 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/job2/stress.sh >> ~/job2/stdout 2>> ~/job2/stderr"]
+      args: ["bash ~/testvk/job2/stress.sh >> ~/testvk/job2/stdout 2>> ~/testvk/job2/stderr"]
       env:
         - name: fifo
           value: "false"
@@ -71,9 +72,9 @@ spec:
 
       volumeMounts:
         - name: job1
-          mountPath: ~/job2
+          mountPath: ~/testvk/job2
         - name: pgid-2
-          mountPath: ~/job2/pgid
+          mountPath: ~/testvk/job2/pgid
 
       resources:
         limits:
