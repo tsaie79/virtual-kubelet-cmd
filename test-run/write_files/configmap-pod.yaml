@@ -32,7 +32,7 @@ data:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: stress
+  name: stress2
 spec:
   containers:
     - name: job1
