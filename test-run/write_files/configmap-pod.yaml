@@ -6,7 +6,25 @@ metadata:
 data:
   stress.sh: |
     #!/bin/bash
-    strss --cpu $cpu --timeout $timeout
+    stress --cpu $cpu --timeout $timeout
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: leader-pid-1
+  namespace: default
+data:
+  job1.pgid: |
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: leader-pid-2
+  namespace: default
+data:
+  job2.pgid: |
 
 ---
 
@@ -19,10 +37,10 @@ spec:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/hostpipe/job1/stress.sh"]
+      args: ["bash ~/job1/stress.sh >> ~/job1/stdout 2>> ~/job1/stderr"]
       env:
         - name: fifo
-          value: "true"
+          value: "false"
         - name: cpu
           value: "4"
         - name: timeout
@@ -30,7 +48,9 @@ spec:
 
       volumeMounts:
         - name: job1
-          mountPath: ~/hostpipe/job1
+          mountPath: ~/job1
+        - name: pgid-1
+          mountPath: ~/job1/pgid
 
       resources:
         limits:
@@ -40,10 +60,10 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/hostpipe/job2/stress.sh"]
+      args: ["bash ~/job2/stress.sh >> ~/job2/stdout 2>> ~/job2/stderr"]
       env:
         - name: fifo
-          value: "true"
+          value: "false"
         - name: cpu
           value: "4"
         - name: timeout
@@ -51,7 +71,9 @@ spec:
 
       volumeMounts:
         - name: job1
-          mountPath: ~/hostpipe/job2
+          mountPath: ~/job2
+        - name: pgid-2
+          mountPath: ~/job2/pgid
 
       resources:
         limits:
@@ -63,6 +85,12 @@ spec:
     - name: job1 
       configMap:
         name: job1
+    - name: pgid-1
+      configMap:
+        name: leader-pid-1
+    - name: pgid-2
+      configMap:
+        name: leader-pid-2
         
   nodeSelector:
     kubernetes.io/role: agent
