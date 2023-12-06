@@ -1,7 +1,6 @@
 package mock
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -135,7 +134,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 	for _, c := range pod.Spec.Containers {
 		var (
-				leader_pid int = 0
+				pgid int = 0
 				err        error
 				
 			)
@@ -182,7 +181,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			}else{
 				log.G(ctx).Infof("fifo env not found for container %s", c.Name)
 				args = strings.Replace(args, "~", home_dir, 1)
-				_, leader_pid, err = runScript(ctx, command, args, env)
+				pgid, err = runScript(ctx, command, args, env)
 			}
 
 
@@ -211,22 +210,22 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			//write the leader pid to the leader_pid file
 			// name leader_pid file as container name + .leader_pid
 			if !runWithFifo {
-				var leader_pid_volmount string
+				var pgid_volmount string
 				for _, volMount := range c.VolumeMounts {
-					if strings.Contains(volMount.Name, "leader-pid") {
-						leader_pid_volmount = volMount.MountPath
+					if strings.Contains(volMount.Name, "pgid") {
+						pgid_volmount = volMount.MountPath
 					}
 				}
 
-				if leader_pid_volmount == "" {
-					log.G(ctx).Infof("leader pid volume mount not found for container %s", c.Name)
-					err = fmt.Errorf("leader pid volume mount not found for container %s", c.Name)
+				if pgid_volmount == "" {
+					log.G(ctx).Infof("pgid volume mount not found for container %s", c.Name)
+					err = fmt.Errorf("pgid volume mount not found for container %s", c.Name)
 					errChan <- err
 					return
 				}
 
-				leader_pid_file := path.Join(c.Name + ".leader_pid")
-				err = writeLeaderPid(ctx, leader_pid_volmount, leader_pid_file, leader_pid)
+				pgidFile := path.Join(c.Name + ".pgid")
+				err = writePgid(ctx, pgid_volmount, pgidFile, pgid)
 				if err != nil {
 					//report error to errChan
 					errChan <- err
@@ -238,7 +237,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 						RestartCount: 0,
 						State: v1.ContainerState{
 							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to write leader pid to file %s; error: %v", leader_pid_file, err),
+								Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
 								FinishedAt: metav1.NewTime(time.Now()),
 								Reason:     string(v1.PodFailed),
 								StartedAt:  time_start,
@@ -290,46 +289,63 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	// }
 }
 
-func writeLeaderPid(ctx context.Context, leader_pid_volmount string, leader_pid_file string, leader_pid int) error {
-	leader_pid_volmount = strings.Replace(leader_pid_volmount, "~", home_dir, 1)
+func writePgid(ctx context.Context, volmount string, file string, pgid int) error {
+	volmount = strings.Replace(volmount, "~", home_dir, 1)
 	//write the leader pid to the leader_pid file
 	// name leader_pid file as container name + .leader_pid
-	leader_pid_file = path.Join(leader_pid_volmount, leader_pid_file)
-	err := ioutil.WriteFile(leader_pid_file, []byte(fmt.Sprintf("%v", leader_pid)), 0644)
+	file = path.Join(volmount, file)
+	err := ioutil.WriteFile(file, []byte(fmt.Sprintf("%v", pgid)), 0644)
 	if err != nil {
-		log.G(ctx).Infof("failed to write leader pid to file %s; error: %v", leader_pid_file, err)
+		log.G(ctx).Infof("failed to write pgid to file %s; error: %v", file, err)
 		return err
 	}
-	log.G(ctx).Infof("successfully wrote leader pid to file %s", leader_pid_file)
+	log.G(ctx).Infof("successfully wrote pgid to file %s", file)
 	return nil
 }
 
-func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (string, int, error) {
+func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, error) {
 	// run the script with the env variables set
 	// run the command like [command[0], command[1], ...] args
-	command = append(command, args)
-	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Env = os.Environ()
+	
+	// command = append(command, args)
+	// cmd := exec.Command(command[0], command[1:]...)
+
+
+	cmdString := strings.Join(command, " ")
+    cmd := cmdString + " '"+ args + "'"
+	cmd = cmd + fmt.Sprintf(" >> %s/stdout 2>> %s/stderr", os.Getenv("HOME"), os.Getenv("HOME"))
+
+	cmd = strings.Replace(cmd, "~", os.Getenv("HOME"), 1)
+	cmd2 := exec.Command("/bin/bash", "-c", cmd)
+
+
+	cmd2.Env = os.Environ()
 	for _, e := range env {
 		log.G(ctx).Infof("env name: %s, env value: %s", e.Name, e.Value)
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
+		cmd2.Env = append(cmd2.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
 	}
 
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
+	// var out bytes.Buffer
+	// var stderr bytes.Buffer
+	// cmd.Stdout = &out
+	// cmd.Stderr = &stderr
 
 	log.G(ctx).Infof("start running command: %s, arg: %s", command, args)
 
-	err := cmd.Run()
+	err := cmd2.Start()
 	if err != nil {
 		log.G(ctx).Infof("failed to run the cmd. error: %v", err)
-		return "", 0, err
+		return 0, err
 	}
-	leader_pid := cmd.Process.Pid
-	log.G(ctx).Infof("successfully ran cmd pid: %v, stdout: %s, stderr: %s", leader_pid, out.String(), stderr.String())
-	return out.String(), leader_pid, nil
+
+	pgid, err := syscall.Getpgid(cmd2.Process.Pid)
+	if err != nil {
+		log.G(ctx).Infof("failed to get pgid. error: %v", err)
+		return 0, err
+	}
+
+	log.G(ctx).Infof("successfully ran cmd pgid: %v", pgid)
+	return pgid, nil
 }
 
 
