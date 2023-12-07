@@ -6,52 +6,33 @@ metadata:
 data:
   stress.sh: |
     #!/bin/bash
-    shifter --image="jlabtsai/stress:p1" --entrypoint
+    shifter --image="jlabtsai/stress:latest" 
     # stress --cpu $cpu --timeout $timeout
-
----
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: leader-pid-1
-  namespace: default
-data:
-  job1.pgid: |
----
-
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: leader-pid-2
-  namespace: default
-data:
-  job2.pgid: |
+    # docker run -d --rm --name stress jlabtsai/stress:p1
 
 ---
 
 apiVersion: v1
 kind: Pod
 metadata:
-  name: stress2
+  name: stress
 spec:
   containers:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/testvk/job1/stress.sh >> ~/testvk/job1/stdout 2>> ~/testvk/job1/stderr"]
+      args: ["bash ~/stress/job1/stress.sh >> ~/stress/job1/stdout 2>> ~/stress/job1/stderr"]
       env:
-        - name: fifo
-          value: "false"
-        - name: cpu
-          value: "4"
-        - name: timeout
-          value: 60s
+        - name: NUMBER
+          value: "3"
+        - name: TIME
+          value: "60"
 
       volumeMounts:
         - name: job1
-          mountPath: ~/testvk/job1
+          mountPath: ~/stress/job1
         - name: pgid-1
-          mountPath: ~/testvk/job1/pgid
+          mountPath: ~/stress/job1/pgid
 
       resources:
         limits:
@@ -61,20 +42,18 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/testvk/job2/stress.sh >> ~/testvk/job2/stdout 2>> ~/testvk/job2/stderr"]
+      args: ["bash ~/stress/job2/stress.sh >> ~/stress/job2/stdout 2>> ~/stress/job2/stderr"]
       env:
-        - name: fifo
-          value: "false"
-        - name: cpu
-          value: "4"
-        - name: timeout
-          value: 60s
+        - name: NUMBER
+          value: "1"
+        - name: TIME
+          value: "40"
 
       volumeMounts:
         - name: job1
-          mountPath: ~/testvk/job2
+          mountPath: ~/stress/job2
         - name: pgid-2
-          mountPath: ~/testvk/job2/pgid
+          mountPath: ~/stress/job2/pgid
 
       resources:
         limits:
@@ -87,11 +66,9 @@ spec:
       configMap:
         name: job1
     - name: pgid-1
-      configMap:
-        name: leader-pid-1
+      emptyDir: {}
     - name: pgid-2
-      configMap:
-        name: leader-pid-2
+      emptyDir: {}
         
   nodeSelector:
     kubernetes.io/role: agent
