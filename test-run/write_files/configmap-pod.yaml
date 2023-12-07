@@ -6,9 +6,9 @@ metadata:
 data:
   stress.sh: |
     #!/bin/bash
-    shifter --image="jlabtsai/stress:latest" 
+    # shifter --image="jlabtsai/stress:latest" 
     # stress --cpu $cpu --timeout $timeout
-    # docker run -d --rm --name stress jlabtsai/stress:p1
+    docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
 
 ---
 
@@ -21,12 +21,14 @@ spec:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/stress/job1/stress.sh >> ~/stress/job1/stdout 2>> ~/stress/job1/stderr"]
+      args: ["bash $workdir/stress.sh >> $workdir/stdout 2>>$workdir/stderr"]
       env:
         - name: NUMBER
           value: "3"
         - name: TIME
           value: "60"
+        - name: workdir
+          value: "~/stress/job1"
 
       volumeMounts:
         - name: job1
@@ -42,12 +44,15 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash ~/stress/job2/stress.sh >> ~/stress/job2/stdout 2>> ~/stress/job2/stderr"]
+      args: ["bash $workdir/stress.sh >> $workdir/stdout 2>> $workdir/stderr"]
       env:
         - name: NUMBER
           value: "1"
         - name: TIME
           value: "40"
+        - name: workdir
+          value: "~/stress/job2"
+
 
       volumeMounts:
         - name: job1
