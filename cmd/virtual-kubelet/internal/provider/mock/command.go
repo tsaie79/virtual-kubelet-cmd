@@ -135,19 +135,19 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	for _, c := range pod.Spec.Containers {
 		var (
 				pgid int = 0
-				err        error
+				err error
 				
 			)
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
-			log.G(ctx).Infof("---------------container name: %s", c.Name)
+			log.G(ctx).WithField("container", c.Name).Info("Starting container")
 
 			//define command to run the bash script based on c.Command of list of strings
 			var command = c.Command
 			if len(command) == 0 {
-				log.G(ctx).Infof("no command found for container %s", c.Name)
-				err = fmt.Errorf("no command found for container %s", c.Name)
+				log.G(ctx).WithField("container", c.Name).Infof("No command found for container")
+				err = fmt.Errorf("no command found for container: %s", c.Name)
 				errChan <- err
 				return
 			}
@@ -291,10 +291,17 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 func writePgid(ctx context.Context, volmount string, file string, pgid int) error {
 	volmount = strings.Replace(volmount, "~", home_dir, 1)
+	// create the destination directory if it does not exist
+	err := exec.Command("mkdir", "-p", volmount).Run()
+	if err != nil {
+		log.G(ctx).WithField("volmount", volmount).Errorf("failed to create directory; error: %v", err)
+		return err
+	}
+
 	//write the leader pid to the leader_pid file
 	// name leader_pid file as container name + .leader_pid
 	file = path.Join(volmount, file)
-	err := ioutil.WriteFile(file, []byte(fmt.Sprintf("%v", pgid)), 0644)
+	err = ioutil.WriteFile(file, []byte(fmt.Sprintf("%v", pgid)), 0644)
 	if err != nil {
 		log.G(ctx).Infof("failed to write pgid to file %s; error: %v", file, err)
 		return err
