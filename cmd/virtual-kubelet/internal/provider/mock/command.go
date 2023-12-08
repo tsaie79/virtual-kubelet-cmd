@@ -336,9 +336,9 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	}
 	for _, e := range env {
 		log.G(ctx).WithField("env name", e.Name).WithField("env value", e.Value).Info("Setting environment variable")
-		envMap[e.Name] = e.Value
 		e.Value = strings.ReplaceAll(e.Value, "~", home_dir)
 		e.Value = strings.ReplaceAll(e.Value, "$HOME", home_dir)
+		envMap[e.Name] = e.Value
 		cmd2.Env = append(cmd2.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
 	}
 
