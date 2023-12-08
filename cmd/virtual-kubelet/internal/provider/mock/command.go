@@ -33,8 +33,8 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 			mountdir := volMount.MountPath
 
 			// if mountdir has ~, replace it with home_dir
-			mountdir = strings.Replace(mountdir, "~", home_dir, 1)
-			mountdir = strings.Replace(mountdir, "$HOME", home_dir, 1)
+			mountdir = strings.ReplaceAll(mountdir, "~", home_dir)
+			mountdir = strings.ReplaceAll(mountdir, "$HOME", home_dir)
 
 			log.G(ctx).WithField("volume_mount", volMount.Name).WithField("mount_directory", mountdir).Info("volumeMount")
 
@@ -178,8 +178,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				err = writeCmdToFifo(ctx, command, args, env)
 			} else {
 				log.G(ctx).WithField("container", c.Name).Info("fifo env not found for container")
-				args = strings.Replace(args, "~", home_dir, 1)
-				args = strings.Replace(args, "$HOME", home_dir, 1)
+				args = strings.ReplaceAll(args, "~", home_dir)
+				args = strings.ReplaceAll(args, "$HOME", home_dir)
 
 				pgid, err = runScript(ctx, command, args, env)
 			}
@@ -298,8 +298,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 }
 
 func writePgid(ctx context.Context, volmount string, file string, pgid int) error {
-	volmount = strings.Replace(volmount, "~", home_dir, 1)
-	volmount = strings.Replace(volmount, "$HOME", home_dir, 1)
+	volmount = strings.ReplaceAll(volmount, "~", home_dir)
+	volmount = strings.ReplaceAll(volmount, "$HOME", home_dir)
 	// create the destination directory if it does not exist
 	err := exec.Command("mkdir", "-p", volmount).Run()
 	if err != nil {
@@ -350,8 +350,8 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 
 	log.G(ctx).WithField("Expanded command", cmd).Info("Expanded command")
 
-	cmd = strings.Replace(cmd, "~", os.Getenv("HOME"), 1)
-	cmd = strings.Replace(cmd, "$HOME", os.Getenv("HOME"), 1)
+	cmd = strings.ReplaceAll(cmd, "~", os.Getenv("HOME"))
+	cmd = strings.ReplaceAll(cmd, "$HOME", os.Getenv("HOME"))
 
 	cmd2.Args = append(cmd2.Args, "-c", cmd)
 
