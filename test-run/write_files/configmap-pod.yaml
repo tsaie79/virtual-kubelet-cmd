@@ -8,6 +8,7 @@ data:
     #!/bin/bash
     # shifter --image="jlabtsai/stress:latest" 
     # stress --cpu $cpu --timeout $timeout
+    echo $workdir
     docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
 
 ---
@@ -28,7 +29,7 @@ spec:
         - name: TIME
           value: "60"
         - name: workdir
-          value: "~/stress/job1"
+          value: "$HOME/stress/job1"
 
       volumeMounts:
         - name: job1
