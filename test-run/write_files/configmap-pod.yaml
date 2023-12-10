@@ -6,7 +6,7 @@ metadata:
 data:
   stress.sh: |
     #!/bin/bash
-    shifter --image="jlabtsai/stress:latest" --entrypoint
+    # shifter --image="jlabtsai/stress:latest" --entrypoint
     # stress --cpu $cpu --timeout $timeout
     echo $workdir
     docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
