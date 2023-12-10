@@ -32,10 +32,9 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 			workdir := vol[volMount.Name]
 			mountdir := volMount.MountPath
 
-			// if mountdir has ~, ReplaceAll it with home_dir
+			// if mountdir has ~, replace it with home_dir
 			mountdir = strings.ReplaceAll(mountdir, "~", home_dir)
 			mountdir = strings.ReplaceAll(mountdir, "$HOME", home_dir)
-
 
 			log.G(ctx).WithField("volume_mount", volMount.Name).WithField("mount_directory", mountdir).Info("volumeMount")
 
@@ -335,14 +334,14 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		envMap[pair[0]] = pair[1]
 	}
 	for _, e := range env {
+		e.Value = strings.ReplaceAll(e.Value, "~", os.Getenv("HOME"))
+		e.Value = strings.ReplaceAll(e.Value, "$HOME", os.Getenv("HOME"))
 		log.G(ctx).WithField("env name", e.Name).WithField("env value", e.Value).Info("Setting environment variable")
 		e.Value = strings.ReplaceAll(e.Value, "~", home_dir)
 		e.Value = strings.ReplaceAll(e.Value, "$HOME", home_dir)
 		envMap[e.Name] = e.Value
 		cmd2.Env = append(cmd2.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
 	}
-
-	log.G(ctx).WithField("Environment map", envMap).Info("Environment variables")
 
 	expand := func(s string) string {
 		return envMap[s]
@@ -353,8 +352,9 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 
 	log.G(ctx).WithField("Expanded command", cmd).Info("Expanded command")
 
-	cmd = strings.ReplaceAll(cmd, "~", home_dir)
-	cmd = strings.ReplaceAll(cmd, "$HOME", home_dir)
+	cmd = strings.ReplaceAll(cmd, "~", os.Getenv("HOME"))
+	cmd = strings.ReplaceAll(cmd, "$HOME", os.Getenv("HOME"))
+
 	cmd2.Args = append(cmd2.Args, "-c", cmd)
 
 	log.G(ctx).WithField("Final command to be run", cmd2.Args).Info("Final command")
