@@ -170,59 +170,11 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 
 	start_time := metav1.NewTime(time.Now())
 
-	// add the pod status to conditions
-	// pod.Status.Conditions = append(pod.Status.Conditions, 
-	// 	v1.PodCondition{
-	// 		Type:               v1.PodReady,
-	// 		Status:             v1.ConditionTrue,
-	// 		LastTransitionTime: metav1.NewTime(time.Now()),
-	// 	},
-	// 	v1.PodCondition{
-	// 		Type:               v1.PodInitialized,
-	// 		Status:             v1.ConditionTrue,
-	// 		LastTransitionTime: metav1.NewTime(time.Now()),
-	// 	},
-	// 	v1.PodCondition{
-	// 		Type:               v1.PodScheduled,
-	// 		Status:             v1.ConditionTrue,
-	// 		LastTransitionTime: metav1.NewTime(time.Now()),
-	// 	},
-	// )
-			
-
-	// notify the pod
-
 	// add volume mounts to the pod
 	vol, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
 	}
-		//update pod status by adding the reason and message to conditions
-	// 	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-	// 		Type:               v1.PodConditionType(v1.PodFailed),
-	// 		Status:             v1.ConditionFalse,
-	// 		LastTransitionTime: metav1.NewTime(time.Now()),
-	// 	})
-	// 	// update pod status to failed
-	// 	pod.Status.Phase = v1.PodFailed
-	// 	pod.Status.Reason = string(v1.PodFailed)
-	// 	pod.Status.Message = fmt.Sprintf("failed to process Pod volumes: %v", err)
-	// 	p.notifier(pod)
-	// }
-
-	// update the pod status
-	// pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
-	// 	Type:               v1.PodConditionType(v1.PodRunning),
-	// 	Status:             v1.ConditionTrue,
-	// 	Reason:             "PodRunning",
-	// 	Message:            "Pod is running",
-	// 	LastTransitionTime: metav1.NewTime(time.Now()),
-	// })
-	// pod.Status.Phase = v1.PodRunning
-	// pod.Status.Reason = "PodRunning"
-	// pod.Status.Message = "Pod is running"
-	// p.notifier(pod)
-
 
 	errChan, cstatusChan := p.runScriptParallel(ctx, pod, vol)
 	for cstatus := range cstatusChan {
@@ -317,6 +269,11 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 // GetPod returns a pod by name that is stored in memory.
 func (p *MockProvider) GetPod(ctx context.Context, namespace, name string) (pod *v1.Pod, err error) {
 	ctx, span := trace.StartSpan(ctx, "GetPod")
+	// I want to add the function that when I call this GetPod function, it will return the informtation of the process of the pod based on
+	// the psgo command. 
+
+
+
 	defer func() {
 		span.SetStatus(err)
 		span.End()
