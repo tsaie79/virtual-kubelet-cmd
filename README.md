@@ -1,10 +1,10 @@
-# Features of this branch
-This branch is to support the following features:
-- [x] Support `configMap` and `secret` as volume types to write scripts at which the pod is launched.
-- [x] Use `volumes` to write the scripts.
-- [x] Use `volumeMounts` to move the scripts to the `mountPath`.
-- [x] Use `command` to execute the scripts.
-- [x] Support `env` to pass the environment variables to the scripts in a container.
+# Enhancements in this Branch
+This branch introduces the following enhancements:
+- [x] Enables the use of `configMap` and `secret` as volume types for script storage during pod launch.
+- [x] Implements `volumes` in the pod to manage the usage of `configMap` and `secret`.
+- [x] Employs `volumeMounts` to relocate scripts to the `mountPath`.
+- [x] Utilizes `command` and `args` for script execution.
+- [x] Supports `env` for passing environment variables to the scripts within a container.
 
 
 # How to use configMap as a volume type to write scripts
@@ -19,9 +19,11 @@ Since each container has its own control of resources, one should only include o
 3. The command to execute the scripts is defined in the `command` field of the `container`.
 
 
+
+
 The mounted path is defined automatically by the vk, following the rule of:
 ```text
-$HOME/$pod_name/$type_of_volume/$volume_name/$script_name
+$HOME/$pod_name/$type_of_volume/$volume_name/$script_named
 ``` 
 where, 
 1. `$type_of_volume` is either `configmaps` or `secrets`.
