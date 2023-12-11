@@ -113,6 +113,19 @@ func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalI
 
 // loadConfig loads the given json configuration files.
 func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) {
+	// if no config file is provided, set up a new config with default values
+	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity 
+	if providerConfig == "" {
+		fmt.Println("No provider config file is provided, using default values")
+		config = MockConfig{
+			CPU:    defaultCPUCapacity,
+			Memory: defaultMemoryCapacity,
+			Pods:   defaultPodCapacity,
+		}
+		fmt.Println("cpu: ", config.CPU, "memory: ", config.Memory, "pods: ", config.Pods)
+		return config, nil
+	}
+
 	data, err := os.ReadFile(providerConfig)
 	if err != nil {
 		return config, err
@@ -136,17 +149,17 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 	}
 
 	if _, err = resource.ParseQuantity(config.CPU); err != nil {
-		return config, fmt.Errorf("Invalid CPU value %v", config.CPU)
+		return config, fmt.Errorf("invalid CPU value %v", config.CPU)
 	}
 	if _, err = resource.ParseQuantity(config.Memory); err != nil {
-		return config, fmt.Errorf("Invalid memory value %v", config.Memory)
+		return config, fmt.Errorf("invalid memory value %v", config.Memory)
 	}
 	if _, err = resource.ParseQuantity(config.Pods); err != nil {
-		return config, fmt.Errorf("Invalid pods value %v", config.Pods)
+		return config, fmt.Errorf("invalid pods value %v", config.Pods)
 	}
 	for _, v := range config.Others {
 		if _, err = resource.ParseQuantity(v); err != nil {
-			return config, fmt.Errorf("Invalid other value %v", v)
+			return config, fmt.Errorf("invalid others value %v", v)
 		}
 	}
 	return config, nil
