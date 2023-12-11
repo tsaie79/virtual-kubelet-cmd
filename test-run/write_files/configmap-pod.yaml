@@ -22,7 +22,7 @@ spec:
     - name: job1
       image: job1
       command: ["/bin/bash", "-c"]
-      args: ["bash $workdir/stress.sh >> $workdir/stdout 2>>$workdir/stderr"]
+      args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
       env:
         - name: NUMBER
           value: "3"
@@ -45,7 +45,7 @@ spec:
     - name: job2
       image: job2
       command: ["/bin/bash", "-c"]
-      args: ["bash $workdir/stress.sh >> $workdir/stdout 2>> $workdir/stderr"]
+      args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
       env:
         - name: NUMBER
           value: "1"
@@ -78,6 +78,7 @@ spec:
         
   nodeSelector:
     kubernetes.io/role: agent
+    kubernetes.io/hostname: vk
   tolerations:
     - key: "virtual-kubelet.io/provider"
       value: "mock"
