@@ -41,6 +41,9 @@ const (
 	DefaultTaintKey              = "virtual-kubelet.io/provider"
 	DefaultStreamIdleTimeout     = 30 * time.Second
 	DefaultStreamCreationTimeout = 30 * time.Second
+
+	// set up default providerConfigPath
+	DefaultProviderConfigPath = ""
 )
 
 // Opts stores all the options for configuring the root virtual-kubelet command.
@@ -174,5 +177,8 @@ func SetDefaultOpts(c *Opts) error {
 		c.StreamCreationTimeout = DefaultStreamCreationTimeout
 	}
 
+	if c.ProviderConfigPath == "" {
+		c.ProviderConfigPath = DefaultProviderConfigPath
+	}
 	return nil
 }
