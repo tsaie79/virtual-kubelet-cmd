@@ -137,7 +137,7 @@ spec:
         - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
         - --kubelet-use-node-status-port
         - --metric-resolution=15s
-        - --kubelet-insecure-tls
+        - --kubelet-insecure-tls=true
         image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -174,7 +174,7 @@ spec:
           name: tmp-dir
       nodeSelector:
         kubernetes.io/os: linux
-        kubernetes.io/hostname: mylin-control-plane
+        kubernetes.io/hostname: lin-worker
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
