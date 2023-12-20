@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/virtual-kubelet-cmd/log"
-	"github.com/virtual-kubelet-cmd/trace"
+	"github.com/virtual-kubelet/virtual-kubelet/log"
+	"github.com/virtual-kubelet/virtual-kubelet/trace"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authentication/authenticatorfactory"
 	"k8s.io/apiserver/pkg/authentication/request/anonymous"
