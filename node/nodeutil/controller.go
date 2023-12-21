@@ -11,9 +11,11 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/virtual-kubelet/virtual-kubelet/log"
 	"github.com/virtual-kubelet/virtual-kubelet/node"
+	nodeapi "github.com/virtual-kubelet/virtual-kubelet/node/api"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -22,6 +24,8 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
+
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 // Node helps manage the startup/shutdown procedure for other controllers.
@@ -278,7 +282,7 @@ func WithClient(c kubernetes.Interface) NodeOpt {
 //
 // If client is nil, this will construct a client using ClientsetFromEnv
 // It is up to the caller to configure auth on the HTTP handler.
-func NewNode(name string, newProvider NewProviderFunc, opts ...NodeOpt) (*Node, error) {
+func NewNode(ctx context.Context, name string, newProvider NewProviderFunc, opts ...NodeOpt) (*Node, error) {
 	cfg := NodeConfig{
 		NumWorkers:           runtime.NumCPU(),
 		InformerResyncPeriod: time.Minute,
@@ -394,6 +398,9 @@ func NewNode(name string, newProvider NewProviderFunc, opts ...NodeOpt) (*Node, 
 		return nil, errors.Wrap(err, "error creating pod controller")
 	}
 
+	cfg.Handler = cfg.GetHTTPHandler(func(context.Context) ([]*v1.Pod, error) {
+		return podInformer.Lister().List(labels.Everything())}, p)
+
 	return &Node{
 		nc:                 nc,
 		pc:                 pc,
@@ -435,4 +442,41 @@ func defaultClientFromEnv(kubeconfigPath string) kubernetes.Interface {
 			Warn("Failed to create clientset from env. Ignore this error If you use your own client")
 	}
 	return client
+}
+
+
+
+func (nc *NodeConfig) GetHTTPHandler(getPodsFromKubernetes nodeapi.PodListerFunc, p Provider) http.Handler {
+	r := mux.NewRouter()
+
+	// This matches the behaviour in the reference kubelet
+	r.StrictSlash(true)
+
+	// Setup routes.
+	r.HandleFunc("/pods", nodeapi.HandleRunningPods(getPodsFromKubernetes)).Methods("GET")
+	// r.HandleFunc("/containerLogs/{namespace}/{pod}/{container}", p.GetContainerLogsHandler).Methods("GET")
+	r.HandleFunc(
+		"/exec/{namespace}/{pod}/{container}",
+		nodeapi.HandleContainerExec(
+			p.RunInContainer,
+			nodeapi.WithExecStreamCreationTimeout(nc.StreamCreationTimeout),
+			nodeapi.WithExecStreamIdleTimeout(nc.StreamIdleTimeout),
+		),
+	).Methods("POST", "GET")
+
+	// add an endpoint for health checks
+	r.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		//return a string "healthy" to indicate the service is healthy
+		_, _ = w.Write([]byte("healthy"))
+	}).Methods("GET")
+
+	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	})
+
+	// add a log when the function is called
+	log.G(context.Background()).Info("HTTP API enabled on port 10250")
+
+	return r
 }
