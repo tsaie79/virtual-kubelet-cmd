@@ -471,6 +471,13 @@ func (nc *NodeConfig) GetHTTPHandler(getPodsFromKubernetes nodeapi.PodListerFunc
 		_, _ = w.Write([]byte("healthy"))
 	}).Methods("GET")
 
+	// add an endpoint for GetMetricsResource
+	r.HandleFunc("/metrics/resource", nodeapi.HandlePodMetricsResource(p.GetMetricsResource)).Methods("GET")
+	
+
+
+
+
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	})
