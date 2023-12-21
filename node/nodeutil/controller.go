@@ -282,7 +282,7 @@ func WithClient(c kubernetes.Interface) NodeOpt {
 //
 // If client is nil, this will construct a client using ClientsetFromEnv
 // It is up to the caller to configure auth on the HTTP handler.
-func NewNode(ctx context.Context, name string, newProvider NewProviderFunc, opts ...NodeOpt) (*Node, error) {
+func NewNode(name string, newProvider NewProviderFunc, opts ...NodeOpt) (*Node, error) {
 	cfg := NodeConfig{
 		NumWorkers:           runtime.NumCPU(),
 		InformerResyncPeriod: time.Minute,
@@ -483,7 +483,7 @@ func (nc *NodeConfig) GetHTTPHandler(getPodsFromKubernetes nodeapi.PodListerFunc
 	})
 
 	// add a log when the function is called
-	log.G(context.Background()).Info("HTTP API enabled on port 10250")
+	log.G(context.Background()).Info("HTTP API enabled on port ", nc.HTTPListenAddr)
 
 	return r
 }
