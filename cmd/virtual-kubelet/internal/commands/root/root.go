@@ -115,7 +115,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		return err
 	}
 
-	cm, err := nodeutil.NewNode(ctx, c.NodeName, newProvider, func(cfg *nodeutil.NodeConfig) error {
+	cm, err := nodeutil.NewNode(c.NodeName, newProvider, func(cfg *nodeutil.NodeConfig) error {
 		cfg.KubeconfigPath = c.KubeConfigPath
 		cfg.Handler = mux
 		cfg.InformerResyncPeriod = c.InformerResyncPeriod
