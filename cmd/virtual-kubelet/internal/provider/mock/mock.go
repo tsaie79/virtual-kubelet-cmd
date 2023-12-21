@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"os/exec"
 	"runtime"
 
 	dto "github.com/prometheus/client_model/go"
@@ -24,7 +23,6 @@ import (
 	"github.com/virtual-kubelet/virtual-kubelet/node/api"
 	stats "github.com/virtual-kubelet/virtual-kubelet/node/api/statsv1alpha1"
 	"github.com/virtual-kubelet/virtual-kubelet/trace"
-	syscall "golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -733,28 +731,4 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 		ctx = span.WithField(ctx, attrs[i], attrs[i+1])
 	}
 	return ctx
-}
-
-// write a function that runs bash command in the host shell and returns the output or error
-// func runCommand(command string) (string, error) {
-// 	cmd := exec.Command("/bin/sh", "-c", command)
-// 	out, err := cmd.Output()
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return string(out), nil
-// }
-
-// write a function that runs bash command in the host shell and returns the output or error
-func runCommand(command string) (string, error) {
-	// setsid is used to run the command in a new session
-	cmd := exec.Command("/bin/sh", "-c", command)
-	// set session id for the command
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
 }
