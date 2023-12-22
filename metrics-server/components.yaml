@@ -133,10 +133,10 @@ spec:
       hostNetwork: true
       containers:
       - args:
+      #https://github.com/kubernetes-sigs/metrics-server/blob/e4416ed3701d994ee2619d83821cc3a02f70e0c2/docs/command-line-flags.txt#L22
         - --cert-dir=/tmp
         - --secure-port=4443
         - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
-        - --kubelet-use-node-status-port
         - --metric-resolution=15s
         - --kubelet-insecure-tls=true
         image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
