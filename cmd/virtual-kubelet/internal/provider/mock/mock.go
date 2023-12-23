@@ -115,12 +115,13 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity 
 	if providerConfig == "" {
 		fmt.Println("No provider config file is provided, using default values")
-		config = MockConfig{
-			CPU:    defaultCPUCapacity,
-			Memory: defaultMemoryCapacity,
-			Pods:   defaultPodCapacity,
-		}
-		fmt.Println("cpu: ", config.CPU, "memory: ", config.Memory, "pods: ", config.Pods)
+		cpu := int64(runtime.NumCPU())
+		mem := int64(getSystemTotalMemory())
+		pods := int64(1000)
+		config.CPU = fmt.Sprintf("%d", cpu)
+		config.Memory = fmt.Sprintf("%d", mem)
+		config.Pods = fmt.Sprintf("%d", pods)
+		log.G(context.Background()).Infof("cpu: %v, memory: %v (bytes), pods: %v", config.CPU, config.Memory, config.Pods)
 		return config, nil
 	}
 
