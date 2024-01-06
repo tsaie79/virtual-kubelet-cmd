@@ -175,10 +175,12 @@ spec:
           name: tmp-dir
       nodeSelector:
         kubernetes.io/os: linux
-        kubernetes.io/hostname: mylin-worker #change this to your worker node name
+        # set the node's role to control-plane to run metrics-server on master node
+        node-role.kubernetes.io/control-plane: ""
       tolerations:
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/control-plane
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
 
       priorityClassName: system-cluster-critical
       serviceAccountName: metrics-server
