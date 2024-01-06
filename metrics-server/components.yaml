@@ -175,7 +175,7 @@ spec:
           name: tmp-dir
       nodeSelector:
         kubernetes.io/os: linux
-        kubernetes.io/hostname: lin-worker
+        kubernetes.io/hostname: mylin-worker #change this to your worker node name
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
