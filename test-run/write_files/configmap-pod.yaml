@@ -25,7 +25,7 @@ spec:
       args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
       env:
         - name: NUMBER
-          value: "3"
+          value: "50"
         - name: TIME
           value: "60"
         - name: workdir
