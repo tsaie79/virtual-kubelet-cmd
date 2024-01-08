@@ -1,0 +1,80 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: job1
+  namespace: default
+data:
+  stress.sh: |
+    #!/bin/bash
+    # shifter --image="jlabtsai/stress:latest" --entrypoint
+    # stress --cpu $cpu --timeout $timeout
+    echo $workdir
+    docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stress-job
+spec:
+  template:
+    spec:
+      containers:
+        - name: job1
+          image: job1
+          command: ["/bin/bash", "-c"]
+          args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
+          env:
+            - name: NUMBER
+              value: "20"
+            - name: TIME
+              value: "300"
+            - name: workdir
+              value: "$HOME/stress/job1"
+          volumeMounts:
+            - name: job1
+              mountPath: ~/stress/job1
+            - name: pgid-1
+              mountPath: ~/stress/job1/pgid
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+        - name: job2
+          image: job2
+          command: ["/bin/bash", "-c"]
+          args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
+          env:
+            - name: NUMBER
+              value: "20"
+            - name: TIME
+              value: "300"
+            - name: workdir
+              value: "~/stress/job2"
+          volumeMounts:
+            - name: job1
+              mountPath: ~/stress/job2
+            - name: pgid-2
+              mountPath: ~/stress/job2/pgid
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: job1 
+          configMap:
+            name: job1
+        - name: pgid-1
+          emptyDir: {}
+        - name: pgid-2
+          emptyDir: {}
+      nodeSelector:
+        kubernetes.io/role: agent
+        kubernetes.io/hostname: vk
+      tolerations:
+        - key: "virtual-kubelet.io/provider"
+          value: "mock"
+          effect: "NoSchedule"
+      restartPolicy: Never
+  backoffLimit: 4
