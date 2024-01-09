@@ -4,10 +4,10 @@ export MAIN="/workspaces/virtual-kubelet-cmd"
 export VK_PATH="$MAIN/test-run/apiserver"
 export VK_BIN="$MAIN/bin"
 export KUBECONFIG="$HOME/.kube/config"
-export VKUBELET_POD_IP="127.0.0.1" # "10.250.64.71"
+export VKUBELET_POD_IP="172.17.0.1" # "10.250.64.71"
 export APISERVER_CERT_LOCATION="$VK_PATH/client.crt"
 export APISERVER_KEY_LOCATION="$VK_PATH/client.key"
-export KUBELET_PORT="10250"
+export KUBELET_PORT="10255"
 export NODENAME="vk"
 
 
