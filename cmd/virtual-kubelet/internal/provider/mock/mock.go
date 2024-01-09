@@ -576,10 +576,16 @@ func (p *MockProvider) GetStatsSummary(ctx context.Context) (*stats.Summary, err
 
 func (p *MockProvider) generateMockMetrics(metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
 	var (
-		cpuMetricSuffix    = "_cpu_usage_seconds_total"
+		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		dummyValue         = float64(100)
+		cpuDummyValue      = time.Since(p.startTime).Seconds()*rand.Float64()
+		memoryDummyValue   = rand.Float64()*1e9
+
 	)
+
+	// print the cpu and memory dummy values
+	log.G(context.Background()).Infof("cpuDummyValue: %v", cpuDummyValue)
+	log.G(context.Background()).Infof("memoryDummyValue: %v", memoryDummyValue)
 
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
@@ -591,13 +597,13 @@ func (p *MockProvider) generateMockMetrics(metricsMap map[string][]*dto.Metric, 
 	newCPUMetric := dto.Metric{
 		Label: label,
 		Counter: &dto.Counter{
-			Value: &dummyValue,
+			Value: &cpuDummyValue,
 		},
 	}
 	newMemoryMetric := dto.Metric{
 		Label: label,
 		Gauge: &dto.Gauge{
-			Value: &dummyValue,
+			Value: &memoryDummyValue,
 		},
 	}
 	// if metric family exists add to metric array
