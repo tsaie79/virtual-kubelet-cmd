@@ -1,15 +1,40 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: job1
+  name: direct-stress
   namespace: default
 data:
   stress.sh: |
     #!/bin/bash
-    # shifter --image="jlabtsai/stress:latest" --entrypoint
-    # stress --cpu $cpu --timeout $timeout
+    echo $workdir
+    stress --cpu $NUMBER --timeout $TIME
+
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: docker-stress
+  namespace: default
+data:
+  stress.sh: |
+    #!/bin/bash
     echo $workdir
     docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
+
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: shifter-stress
+  namespace: default
+data:
+  stress.sh: |
+    #!/bin/bash
+    echo $workdir
+    shifter --image="jlabtsai/stress:latest" --entrypoint
+
 
 ---
 
@@ -64,14 +89,14 @@ spec:
       volumes:
         - name: job1 
           configMap:
-            name: job1
+            name: shifter-stress
         - name: pgid-1
           emptyDir: {}
         - name: pgid-2
           emptyDir: {}
       nodeSelector:
         kubernetes.io/role: agent
-        kubernetes.io/hostname: vk
+        kubernetes.io/hostname: vk-nersc
       tolerations:
         - key: "virtual-kubelet.io/provider"
           value: "mock"
