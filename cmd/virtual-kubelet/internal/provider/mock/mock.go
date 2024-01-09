@@ -578,7 +578,7 @@ func (p *MockProvider) generateMockMetrics(metricsMap map[string][]*dto.Metric, 
 	var (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = time.Since(p.startTime).Seconds()*(1+rand.Float64())
+		cpuDummyValue      = time.Since(p.startTime).Seconds() // use the time since it's a monotonically increasing value
 		memoryDummyValue   = rand.Float64()*1e9
 
 	)
