@@ -616,7 +616,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		},
 	}
 
-	metricsMap := p.generateMockMetrics(nil, "node", nodeLabels)
+	metricsMap := p.generateNodeMetrics(nil, "node", nodeLabels)
 	for _, pod := range p.pods {
 		podLabels := []*dto.LabelPair{
 			{
@@ -632,7 +632,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 				Value: &pod.Namespace,
 			},
 		}
-		metricsMap = p.generateMockMetrics(metricsMap, "pod", podLabels)
+		metricsMap = p.generateProcessMetrics(metricsMap, "pod", podLabels)
 		for _, container := range pod.Spec.Containers {
 			containerLabels := []*dto.LabelPair{
 				{
@@ -652,7 +652,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 					Value: &container.Name,
 				},
 			}
-			metricsMap = p.generateMockMetrics(metricsMap, "container", containerLabels)
+			metricsMap = p.generateProcessMetrics(metricsMap, "container", containerLabels)
 		}
 	}
 
