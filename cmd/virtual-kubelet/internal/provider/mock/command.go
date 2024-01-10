@@ -248,20 +248,20 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			}
 
 			// update the container status to success
-			cstatusChan <- v1.ContainerStatus{
-				Name:         c.Name,
-				Image:        c.Image,
-				Ready:        true,
-				RestartCount: 0,
-				State: v1.ContainerState{
-					Terminated: &v1.ContainerStateTerminated{
-						Message:    fmt.Sprintf("container %s executed successfully", c.Name),
-						Reason:     string(v1.PodSucceeded),
-						FinishedAt: metav1.NewTime(time.Now()),
-						StartedAt:  time_start,
-					},
-				},
-			}
+			// cstatusChan <- v1.ContainerStatus{
+			// 	Name:         c.Name,
+			// 	Image:        c.Image,
+			// 	Ready:        true,
+			// 	RestartCount: 0,
+			// 	State: v1.ContainerState{
+			// 		Terminated: &v1.ContainerStateTerminated{
+			// 			Message:    fmt.Sprintf("container %s executed successfully", c.Name),
+			// 			Reason:     string(v1.PodSucceeded),
+			// 			FinishedAt: metav1.NewTime(time.Now()),
+			// 			StartedAt:  time_start,
+			// 		},
+			// 	},
+			// }
 		}(c)
 	}
 
