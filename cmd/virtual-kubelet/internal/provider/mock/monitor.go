@@ -19,8 +19,8 @@ func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, 
 	var (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = 0.1 // use the time since it's a monotonically increasing value
-		memoryDummyValue   = 0.1
+		cpuDummyValue      = 0.0 // use the time since it's a monotonically increasing value
+		memoryDummyValue   = 0.0
 	)
 
 	userTime, systemTime, _, usedMemory, err := getNodeStats()
@@ -70,8 +70,8 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	var (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = 0.1 // use the time since it's a monotonically increasing value
-		memoryDummyValue   = 0.1
+		cpuDummyValue      = 0.0 // use the time since it's a monotonically increasing value
+		memoryDummyValue   = 0.0
 	)
 
 	pgids, pgid_map, err := getPgidsFromPod(pod)
