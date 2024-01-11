@@ -7,7 +7,8 @@ data:
   stress.sh: |
     #!/bin/bash
     echo $workdir
-    stress --cpu $NUMBER --timeout $TIME
+    # stress --timeout $TIME --vm 1 --vm-bytes 4G # test memory
+    stress --timeout $TIME --cpu $NUMBER # test cpu
 
 ---
 
@@ -52,7 +53,7 @@ spec:
           args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
           env:
             - name: NUMBER
-              value: "20"
+              value: "4"
             - name: TIME
               value: "300"
             - name: workdir
@@ -66,37 +67,37 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
-        - name: job2
-          image: job2
-          command: ["/bin/bash", "-c"]
-          args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
-          env:
-            - name: NUMBER
-              value: "20"
-            - name: TIME
-              value: "300"
-            - name: workdir
-              value: "~/stress/job2"
-          volumeMounts:
-            - name: job1
-              mountPath: ~/stress/job2
-            - name: pgid-2
-              mountPath: ~/stress/job2/pgid
-          resources:
-            limits:
-              cpu: "1"
-              memory: 1Gi
+        # - name: job2
+        #   image: job2
+        #   command: ["/bin/bash", "-c"]
+        #   args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
+        #   env:
+        #     - name: NUMBER
+        #       value: "4"
+        #     - name: TIME
+        #       value: "120"
+        #     - name: workdir
+        #       value: "~/stress/job2"
+        #   volumeMounts:
+        #     - name: job1
+        #       mountPath: ~/stress/job2
+        #     - name: pgid-2
+        #       mountPath: ~/stress/job2/pgid
+        #   resources:
+        #     limits:
+        #       cpu: "1"
+        #       memory: 1Gi
       volumes:
         - name: job1 
           configMap:
-            name: shifter-stress
+            name: direct-stress
         - name: pgid-1
           emptyDir: {}
         - name: pgid-2
           emptyDir: {}
       nodeSelector:
         kubernetes.io/role: agent
-        kubernetes.io/hostname: vk-nersc
+        kubernetes.io/hostname: vk
       tolerations:
         - key: "virtual-kubelet.io/provider"
           value: "mock"
