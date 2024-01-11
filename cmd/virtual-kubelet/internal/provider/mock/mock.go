@@ -636,10 +636,9 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		}
 		
 		metricsMap, pgid_map := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
-		fmt.Println("pgid_map: ", pgid_map)
+		log.G(context.Background()).Infof("pgid_map: %v", pgid_map)
 		filteredContainers := filterContainersByPgid(pod, pgid_map) // filter the containers by pgid, avoid duplicate pgid
 		for _, container := range filteredContainers {
-			fmt.Println("-----------------")
 			containerName := container.Name
 			pgid_int := pgid_map[containerName]
 			//make pgid_str
