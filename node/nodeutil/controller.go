@@ -483,7 +483,7 @@ func (nc *NodeConfig) GetHTTPHandler(getPodsFromKubernetes nodeapi.PodListerFunc
 	})
 
 	// add a log when the function is called
-	log.G(context.Background()).Info("HTTP API enabled on port ", nc.HTTPListenAddr)
+	log.G(context.Background()).Info("Kubelet API enabled at ", os.Getenv("VKUBELET_POD_IP"), nc.HTTPListenAddr)
 
 	return r
 }
