@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// "github.com/pkg/errors"
+	"strconv"
 )
 
 const (
@@ -608,6 +609,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		podNameStr       = "pod"
 		containerNameStr = "container"
 		namespaceStr     = "namespace"
+		pgidStr          = "pgid"
 	)
 	nodeLabels := []*dto.LabelPair{
 		{
@@ -632,8 +634,16 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 				Value: &pod.Namespace,
 			},
 		}
-		metricsMap = p.generateProcessMetrics(metricsMap, "pod", podLabels)
-		for _, container := range pod.Spec.Containers {
+		
+		metricsMap, pgid_map := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
+		fmt.Println("pgid_map: ", pgid_map)
+		filteredContainers := filterContainersByPgid(pod, pgid_map)
+		for _, container := range filteredContainers {
+			fmt.Println("-----------------")
+			containerName := container.Name
+			pgid_int := pgid_map[containerName]
+			//make pgid_str
+			pgid_str := strconv.Itoa(pgid_int)
 			containerLabels := []*dto.LabelPair{
 				{
 					Name:  &nodeNameStr,
@@ -649,10 +659,14 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 				},
 				{
 					Name:  &containerNameStr,
-					Value: &container.Name,
+					Value: &containerName, 
+				},
+				{
+					Name:  &pgidStr,
+					Value: &pgid_str,
 				},
 			}
-			metricsMap = p.generateProcessMetrics(metricsMap, "container", containerLabels)
+			metricsMap = p.generateContainerMetrics(&container, metricsMap, "container", containerLabels)
 		}
 	}
 
@@ -707,4 +721,20 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 		ctx = span.WithField(ctx, attrs[i], attrs[i+1])
 	}
 	return ctx
+}
+
+
+func filterContainersByPgid(pod *v1.Pod, pgidMap map[string]int) []v1.Container {
+    var filteredContainers []v1.Container
+    seenPgid := make(map[int]bool)
+
+    for _, container := range pod.Spec.Containers {
+        pgid, ok := pgidMap[container.Name]
+        if ok && !seenPgid[pgid] {
+            filteredContainers = append(filteredContainers, container)
+            seenPgid[pgid] = true
+        }
+    }
+	log.G(context.Background()).Infof("filteredContainers: %v", filteredContainers)
+    return filteredContainers
 }
