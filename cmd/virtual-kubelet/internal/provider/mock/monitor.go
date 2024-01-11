@@ -13,6 +13,8 @@ import (
 	"strings"
 	"bufio"
 	"strconv"
+	"context"
+	"github.com/virtual-kubelet/virtual-kubelet/log"
 )
 
 func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
@@ -25,7 +27,7 @@ func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, 
 
 	userTime, systemTime, _, usedMemory, err := getNodeStats()
 	if err != nil {
-		fmt.Println("Error getting user, system, total CPU time, and used memory:", err)
+		log.G(context.Background()).Error("Error getting user, system, total CPU time, and used memory:", err)
 	} else {
 		cpuDummyValue = userTime + systemTime
 		memoryDummyValue = float64(usedMemory)
@@ -76,7 +78,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 
 	pgids, pgid_map, err := getPgidsFromPod(pod)
 	if err != nil {
-		fmt.Println("Error getting pgids:", err)
+		log.G(context.Background()).Error("Error getting pgids:", err)
 		return nil, nil
 	}
 
@@ -87,10 +89,10 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 		podVMS = 0.0
 	)
 	for _, pgid := range pgids {
-		fmt.Printf("readout pgid (p): %v\n", pgid)
+		log.G(context.Background()).Infof("Pod name: %v, pgid: %v\n", pod.Name, pgid)
 		userTime, systemTime, rss, vms, err := getProcessesMetrics(pgid)
 		if err != nil {
-			fmt.Println("Error getting user, system CPU time, and memory usage:", err)
+			log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
 			continue
 		}
 		podUserTime += userTime
@@ -101,12 +103,11 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 
 
 	if err != nil {
-		fmt.Println("Error getting user, system CPU time, and memory usage:", err)
+		log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
 	} else {
 		cpuDummyValue = podUserTime + podSystemTime
 		memoryDummyValue = podRSS
-		fmt.Printf("Pod CPU time: %.2f\n", cpuDummyValue)
-		fmt.Printf("Pod Memory usage: %.2f bytes, %.2f MB\n", memoryDummyValue, memoryDummyValue/1024/1024)
+		log.G(context.Background()).Infof("Pod CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
 	}
 
 	if metricsMap == nil {
@@ -156,20 +157,18 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 	)
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
-		fmt.Println("Error getting pgid:", err)
+		log.G(context.Background()).Error("Error getting pgid:", err)
 		return nil
 	}	
 
 	userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 	if err != nil {
-		fmt.Println("Error getting user, system CPU time, and memory usage:", err)
+		log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
 		return nil
 	}
 	cpuDummyValue = userTime + systemTime
 	memoryDummyValue = rss
-
-	fmt.Printf("Container CPU time: %.2f\n", cpuDummyValue)
-	fmt.Printf("Container Memory usage: %.2f bytes, %.2f MB\n", memoryDummyValue, memoryDummyValue/1024/1024)
+	log.G(context.Background()).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
 
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
@@ -198,13 +197,13 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 	if cpuMetrics, ok := metricsMap[finalCpuMetricName]; ok {
 		metricsMap[finalCpuMetricName] = append(cpuMetrics, &newCPUMetric)
 	} else {
-		fmt.Printf("cpuMetrics not found: %v\n", finalCpuMetricName)
+		log.G(context.Background()).Errorf("cpuMetrics not found: %v\n", finalCpuMetricName)
 		metricsMap[finalCpuMetricName] = []*dto.Metric{&newCPUMetric}
 	}
 	if memoryMetrics, ok := metricsMap[finalMemoryMetricName]; ok {
 		metricsMap[finalMemoryMetricName] = append(memoryMetrics, &newMemoryMetric)
 	} else {
-		fmt.Printf("memoryMetrics not found: %v\n", finalMemoryMetricName)
+		log.G(context.Background()).Errorf("memoryMetrics not found: %v\n", finalMemoryMetricName)
 		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
 	}
 
@@ -257,7 +256,7 @@ func getProcessesMetrics(pgid int) (float64, float64, float64, float64, error) {
 			//print the cmd of the process
 			cmd, err := p.Cmdline()
 			if err == nil {
-				fmt.Printf("pid: %v, pgid: %v, cmd: %v\n", pid, pgid, cmd)
+				log.G(context.Background()).Infof("pid: %v, pgid: %v, cmd: %v\n", pid, pgid, cmd)
 			}
 
             cpuTimes, err := p.Times()
@@ -294,11 +293,12 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 	}
 
 	pgid_file := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
-	fmt.Printf("pgid file (c): %v\n", pgid_file)
+	log.G(context.Background()).Infof("Container name: %v, pgid file: %v\n", c.Name, pgid_file)
 	// open pgid file and read the number in it
 	file, err := os.Open(pgid_file)
 	if err != nil {
-		return 0, fmt.Errorf("error opening pgid file: %v", err)
+		log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
+		return 0, err
 	}
 	defer file.Close()
 
@@ -306,9 +306,10 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 	scanner.Scan()
 	pgid_str := scanner.Text()
 	pgid_int, err := strconv.Atoi(pgid_str)
-	fmt.Printf("readout pgid: %v\n", pgid_int)
+	log.G(context.Background()).Infof("Container name: %v, pgid: %v\n", c.Name, pgid_int)
 	if err != nil {
-		return 0, fmt.Errorf("error converting pgid to int: %v", err)
+		log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
+		return 0, err
 	}
 	return pgid_int, nil
 }
@@ -329,14 +330,17 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		}
 	
 		if pgid_volmount == "" {
-			return nil, nil, fmt.Errorf("pgid volume mount not found")
+			err := fmt.Errorf("pgid volume mount not found")
+			log.G(context.Background()).Errorf("pgid volume mount not found: %v\n", err)
+			return nil, nil, err
 		}
 
 		pgid_file := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
 		// open pgid file and read the number in it
 		file, err := os.Open(pgid_file)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error opening pgid file: %v", err)
+			log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
+			return nil, nil, err
 		}
 		defer file.Close()
 
@@ -345,7 +349,8 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		pgid_str := scanner.Text()
 		pgid_int, err := strconv.Atoi(pgid_str)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error converting pgid to int: %v", err)
+			log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
+			return nil, nil, err
 		}
 		pgids = append(pgids, pgid_int)
 		pgid_map[c.Name] = pgid_int
