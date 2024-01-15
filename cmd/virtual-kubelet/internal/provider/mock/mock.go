@@ -609,7 +609,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		podNameStr       = "pod"
 		containerNameStr = "container"
 		namespaceStr     = "namespace"
-		pgidStr          = "pgid"
+		pgidStr		  = "pgid"
 	)
 	nodeLabels := []*dto.LabelPair{
 		{
@@ -635,14 +635,14 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 			},
 		}
 		
-		metricsMap, pgid_map := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
-		log.G(context.Background()).Infof("pgid_map: %v", pgid_map)
-		filteredContainers := filterContainersByPgid(pod, pgid_map) // filter the containers by pgid, avoid duplicate pgid
+		metricsMap, pgidMap := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
+		log.G(context.Background()).Infof("pgidMap: %v", pgidMap)
+		filteredContainers := filterContainersByPgid(pod, pgidMap) // filter the containers by pgid, avoid duplicate pgid
 		for _, container := range filteredContainers {
 			containerName := container.Name
-			pgid_int := pgid_map[containerName]
-			//make pgid_str
-			pgid_str := strconv.Itoa(pgid_int)
+			pgidLabelInt := pgidMap[containerName]
+			//make pgidStr
+			pgidLabelStr := strconv.Itoa(pgidLabelInt)
 			containerLabels := []*dto.LabelPair{
 				{
 					Name:  &nodeNameStr,
@@ -662,7 +662,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 				},
 				{
 					Name:  &pgidStr,
-					Value: &pgid_str,
+					Value: &pgidLabelStr,
 				},
 			}
 			metricsMap = p.generateContainerMetrics(&container, metricsMap, "container", containerLabels)
