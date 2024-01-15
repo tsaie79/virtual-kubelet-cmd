@@ -76,11 +76,19 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 		memoryDummyValue   = 0.0
 	)
 
-	pgids, pgid_map, err := getPgidsFromPod(pod)
+	pgids, pgidMap, err := getPgidsFromPod(pod)
 	if err != nil {
 		log.G(context.Background()).Error("Error getting pgids:", err)
 		return nil, nil
 	}
+
+	// update label by adding the pgidMap
+	pgidMapStr := fmt.Sprintf("%v", pgidMap)
+	var pgidLabelKey = "pgidMap"
+	label = append(label, &dto.LabelPair{
+		Name:  &pgidLabelKey,
+		Value: &pgidMapStr,
+	})
 
 	var (
 		podUserTime = 0.0
@@ -143,8 +151,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	} else {
 		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
 	}
-
-	return metricsMap, pgid_map
+	return metricsMap, pgidMap
 }
 
 
@@ -292,10 +299,10 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 		return 0, fmt.Errorf("pgid volume mount not found")
 	}
 
-	pgid_file := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
-	log.G(context.Background()).Infof("Container name: %v, pgid file: %v\n", c.Name, pgid_file)
+	pgidFile := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
+	log.G(context.Background()).Infof("Container name: %v, pgid file: %v\n", c.Name, pgidFile)
 	// open pgid file and read the number in it
-	file, err := os.Open(pgid_file)
+	file, err := os.Open(pgidFile)
 	if err != nil {
 		log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
 		return 0, err
@@ -304,20 +311,20 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
-	pgid_str := scanner.Text()
-	pgid_int, err := strconv.Atoi(pgid_str)
-	log.G(context.Background()).Infof("Container name: %v, pgid: %v\n", c.Name, pgid_int)
+	pgidStr := scanner.Text()
+	pgidInt, err := strconv.Atoi(pgidStr)
+	log.G(context.Background()).Infof("Container name: %v, pgid: %v\n", c.Name, pgidInt)
 	if err != nil {
 		log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
 		return 0, err
 	}
-	return pgid_int, nil
+	return pgidInt, nil
 }
 
 func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 	var pgids []int
 	// define a map that stores the container name and its pgid
-	var pgid_map = make(map[string]int)
+	var pgidMap = make(map[string]int)
 	for _, c := range pod.Spec.Containers {
 		var pgid_volmount string
 		for _, volMount := range c.VolumeMounts {
@@ -335,9 +342,9 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 			return nil, nil, err
 		}
 
-		pgid_file := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
+		pgidFile := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
 		// open pgid file and read the number in it
-		file, err := os.Open(pgid_file)
+		file, err := os.Open(pgidFile)
 		if err != nil {
 			log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
 			return nil, nil, err
@@ -346,14 +353,14 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 		scanner := bufio.NewScanner(file)
 		scanner.Scan()
-		pgid_str := scanner.Text()
-		pgid_int, err := strconv.Atoi(pgid_str)
+		pgidStr := scanner.Text()
+		pgidInt, err := strconv.Atoi(pgidStr)
 		if err != nil {
 			log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
 			return nil, nil, err
 		}
-		pgids = append(pgids, pgid_int)
-		pgid_map[c.Name] = pgid_int
+		pgids = append(pgids, pgidInt)
+		pgidMap[c.Name] = pgidInt
 
 		// remove duplicate pgids and preserve only the unique ones
 		// https://www.geeksforgeeks.org/how-to-remove-duplicate-values-from-slice-in-golang/
@@ -367,6 +374,6 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		}
 		pgids = list
 	}
-	return pgids, pgid_map, nil
+	return pgids, pgidMap, nil
 }
 
