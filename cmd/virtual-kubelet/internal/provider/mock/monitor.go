@@ -379,7 +379,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 
 // get the shell process status from the pgid
-func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus {
+func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time) *v1.ContainerStatus {
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
 		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
@@ -424,13 +424,12 @@ func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus
 
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
-	start_time := metav1.NewTime(time.Now())
 	// if one of the process status is "R" (running), then the container is running
 	for _, status := range processStatus {
 		if status == "R" {
 			containerState = &v1.ContainerState{
 				Running: &v1.ContainerStateRunning{
-					StartedAt: start_time,
+					StartedAt: metav1.NewTime(startTime),
 				},
 			}
 			containerStatus = &v1.ContainerStatus{
@@ -451,8 +450,8 @@ func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus
 		Terminated: &v1.ContainerStateTerminated{
 			Reason:      "",
 			Message:     "status: " + strings.Join(processStatus, ", "),
-			StartedAt:   start_time,
-			FinishedAt:  metav1.Now(),
+			StartedAt:   metav1.NewTime(startTime),
+			FinishedAt:  metav1.NewTime(time.Now()),
 			ContainerID: "",
 		},
 	}
@@ -469,7 +468,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus
 }
 
 // create the pod spec status from the container status
-func createPodSpecStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
+func createPodSpecStatusFromContainerStatus(pod *v1.Pod, startTime time.Time) *v1.Pod {
 	var containerStatuses []v1.ContainerStatus
 	for _, c := range pod.Spec.Containers {
 		containerStatus := createContainerStatusFromProcessStatus(&c)
