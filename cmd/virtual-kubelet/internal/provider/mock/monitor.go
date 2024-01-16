@@ -99,10 +99,10 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 		podVMS = 0.0
 	)
 	for _, pgid := range pgids {
-		log.G(context.Background()).Infof("Pod name: %v, pgid: %v\n", pod.Name, pgid)
+		// log.G(context.Background()).Infof("Pod name: %v, pgid: %v\n", pod.Name, pgid)
 		userTime, systemTime, rss, vms, err := getProcessesMetrics(pgid)
 		if err != nil {
-			log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
+			log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 			continue
 		}
 		podUserTime += userTime
@@ -112,13 +112,10 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	}
 
 
-	if err != nil {
-		log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
-	} else {
-		cpuDummyValue = podUserTime + podSystemTime
-		memoryDummyValue = podRSS
-		log.G(context.Background()).Infof("Pod CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
-	}
+
+	cpuDummyValue = podUserTime + podSystemTime
+	memoryDummyValue = podRSS
+	log.G(context.Background()).WithField("pod", pod.Name).Infof("Pod CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
 
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
@@ -172,12 +169,12 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 
 	userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 	if err != nil {
-		log.G(context.Background()).Error("Error getting user, system CPU time, and memory usage:", err)
+		log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 		return nil
 	}
 	cpuDummyValue = userTime + systemTime
 	memoryDummyValue = rss
-	log.G(context.Background()).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
+	log.G(context.Background()).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
 
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
@@ -262,11 +259,11 @@ func getProcessesMetrics(pgid int) (float64, float64, float64, float64, error) {
         }
 
         if processPgid == pgid {
-			//print the cmd of the process
-			cmd, err := p.Cmdline()
-			if err == nil {
-				log.G(context.Background()).Infof("pid: %v, pgid: %v, cmd: %v\n", pid, pgid, cmd)
-			}
+			// //print the cmd of the process
+			// cmd, err := p.Cmdline()
+			// if err == nil {
+			// 	log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
+			// }
 
             cpuTimes, err := p.Times()
             if err == nil {
@@ -302,11 +299,11 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 	}
 
 	pgidFile := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
-	log.G(context.Background()).Infof("Container name: %v, pgid file: %v\n", c.Name, pgidFile)
+	log.G(context.Background()).WithField("container", c.Name).Infof("pgid file: %v\n", pgidFile)
 	// open pgid file and read the number in it
 	file, err := os.Open(pgidFile)
 	if err != nil {
-		log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
+		log.G(context.Background()).WithField("container", c.Name).Errorf("error opening pgid file: %v\n", err)
 		return 0, err
 	}
 	defer file.Close()
@@ -315,9 +312,9 @@ func getPgidFromContainer(c *v1.Container) (int, error) {
 	scanner.Scan()
 	pgidStr := scanner.Text()
 	pgidInt, err := strconv.Atoi(pgidStr)
-	log.G(context.Background()).Infof("Container name: %v, pgid: %v\n", c.Name, pgidInt)
+	log.G(context.Background()).WithField("container", c.Name).Infof("pgid: %v\n", pgidInt)
 	if err != nil {
-		log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
+		log.G(context.Background()).WithField("container", c.Name).Errorf("error converting pgid to int: %v\n", err)
 		return 0, err
 	}
 	return pgidInt, nil
@@ -340,7 +337,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 	
 		if pgid_volmount == "" {
 			err := fmt.Errorf("pgid volume mount not found")
-			log.G(context.Background()).Errorf("pgid volume mount not found: %v\n", err)
+			log.G(context.Background()).WithField("container", c.Name).Errorf("pgid volume mount not found: %v\n", err)
 			return nil, nil, err
 		}
 
@@ -348,7 +345,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		// open pgid file and read the number in it
 		file, err := os.Open(pgidFile)
 		if err != nil {
-			log.G(context.Background()).Errorf("error opening pgid file: %v\n", err)
+			log.G(context.Background()).WithField("container", c.Name).Errorf("error opening pgid file: %v\n", err)
 			return nil, nil, err
 		}
 		defer file.Close()
@@ -358,7 +355,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		pgidStr := scanner.Text()
 		pgidInt, err := strconv.Atoi(pgidStr)
 		if err != nil {
-			log.G(context.Background()).Errorf("error converting pgid to int: %v\n", err)
+			log.G(context.Background()).WithField("container", c.Name).Errorf("error converting pgid to int: %v\n", err)
 			return nil, nil, err
 		}
 		pgids = append(pgids, pgidInt)
@@ -385,14 +382,13 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus {
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
-		log.G(context.Background()).Error("Error getting pgid:", err)
+		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
 		return nil
 	}
 
 	pids, err := process.Pids()
 	if err != nil {
-		log.G(context.Background()).Error("Error getting pids:", err)
-		return nil
+		log.G(context.Background()).WithField("container", c.Name).Error("Error getting pids:", err)
 	}
 
 	var processStatus []string
@@ -409,19 +405,19 @@ func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus
 
 		if processPgid == pgid {
 			//print the cmd of the process
-			cmd, err := p.Cmdline()
-			if err == nil {
-			 log.G(context.Background()).Errorf("Error getting cmd:", err)
-			}
+			cmd, _ := p.Cmdline()
+			// if err == nil {
+			//  log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
+			// }
 
 			// get the process status
 			status, err := p.Status()
 			if err != nil {
-				log.G(context.Background()).Error("Error getting process status:", err)
+				log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting process status:", err)
 				return nil
 			}
 			processStatus = append(processStatus, status)
-			log.G(context.Background()).Infof("pid: %v, pgid: %v, status: %v, cmd: %v\n", pid, pgid, status, cmd)
+			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
 		}
 	}
 
