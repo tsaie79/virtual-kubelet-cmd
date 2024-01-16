@@ -471,7 +471,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 func createPodSpecStatusFromContainerStatus(pod *v1.Pod, startTime time.Time) *v1.Pod {
 	var containerStatuses []v1.ContainerStatus
 	for _, c := range pod.Spec.Containers {
-		containerStatus := createContainerStatusFromProcessStatus(&c)
+		containerStatus := createContainerStatusFromProcessStatus(&c, startTime)
 		containerStatuses = append(containerStatuses, *containerStatus)
 	}
 
