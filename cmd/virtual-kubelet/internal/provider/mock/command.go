@@ -247,7 +247,18 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				}
 			}
 
-			// update the container status to success
+			// update the container status to waiting
+			// cstatusChan <- v1.ContainerStatus{
+			// 	Name:         c.Name,
+			// 	Image:        c.Image,
+			// 	Ready:        false,
+			// 	RestartCount: 0,
+			// 	State: v1.ContainerState{
+			// 		Waiting: &v1.ContainerStateWaiting{
+			// 			Message:    fmt.Sprintf("container %s is waiting for the job to finish", c.Name),					},
+			// 	},
+			// }
+
 			// cstatusChan <- v1.ContainerStatus{
 			// 	Name:         c.Name,
 			// 	Image:        c.Image,
@@ -324,7 +335,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// run the command like [command[0], command[1], ...] args
 	
 	// command = append(command, args)
-	// cmd := exec.Command(command[0], command[1:]...)
+	// cmd := exec.Command(command[0], command[1:]...)d:
 
 	cmd2 := exec.Command("bash")
 
@@ -357,6 +368,9 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 
 	log.G(ctx).WithField("Final command to be run", cmd2.Args).Info("Final command")
 
+	// set new process group id for the command 
+	cmd2.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	
 	err := cmd2.Start()
 	if err != nil {
 		log.G(ctx).WithField("error", err).Info("Failed to run the command")
