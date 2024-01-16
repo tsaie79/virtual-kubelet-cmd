@@ -211,7 +211,6 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 			pod.Status.Phase = v1.PodFailed
 			pod.Status.Message = string(v1.PodFailed)
 			p.notifier(pod)
-			log.G(ctx).Infof("pod status: %v", pod.Status)
 			return nil
 		}
 	}
