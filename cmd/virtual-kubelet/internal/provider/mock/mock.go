@@ -26,7 +26,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"github.com/shirou/gopsutil/process"
+	"syscall"
 	// "github.com/pkg/errors"
 	"strconv"
 )
@@ -269,9 +270,86 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 		return errdefs.NotFound("pod not found")
 	}
 
-	now := metav1.Now()
+	p.deletePod(ctx, pod)
+
+	delete(p.pods, key)
+	pod.Status.Phase = v1.PodFailed
+	pod.Status.Reason = "PodDeleted"
+	pod.Status.Message = "Pod is deleted"
+
+	p.notifier(pod)
+
+	return nil
+}
+
+// define deletePod
+func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) (err error) {
+	ctx, span := trace.StartSpan(ctx, "DeletePod")
+	defer span.End()
+
+	// check the status of containers in the pod, if the container is running, then kill the process by looking up the pgid and os kill command the pids in the pgid
+	// if the container is terminated, then skip it
+	// if the container is waiting, then skip it
+
+	// Iterate over each container status in the pod
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		// Skip if the container is not running
+		if containerStatus.State.Running == nil {
+			continue
+		}
+
+		// Iterate over each container in the pod spec
+		for _, specContainer := range pod.Spec.Containers {
+			// Skip if the container names don't match
+			if specContainer.Name != containerStatus.Name {
+				continue
+			}
+
+			// Get the process group ID (pgid) from the container ID
+			pgid := containerStatus.ContainerID
+
+			// Get the list of process IDs (pids)
+			pids, err := process.Pids()
+			if err != nil {
+				log.G(ctx).WithField("pgid", pgid).WithError(err).Error("Failed to get pids")
+				continue
+			}
+
+			// Iterate over each process ID
+			for _, pid := range pids {
+				// Create a new process instance
+				proc, err := process.NewProcess(pid)
+				if err != nil {
+					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get process")
+					continue
+				}
+
+				// Get the process group ID (pgid) of the process
+				pgidInt, err := syscall.Getpgid(int(pid))
+				if err != nil {
+					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get pgid")
+					continue
+				}
+
+				// Skip if the process group ID doesn't match
+				if strconv.Itoa(pgidInt) != pgid {
+					continue
+				}
+
+				// Kill the process
+				err = proc.Kill()
+				if err != nil {
+					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to kill process")
+					continue
+				}
+
+				log.G(ctx).WithField("pid", pid).Info("Killed process")
+			}
+		}
+	}
 
 	// update the container status
+	now := metav1.Now()
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
 			ExitCode:   0,
@@ -281,14 +359,9 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
 		}
 	}
 
-	delete(p.pods, key)
-	pod.Status.Phase = v1.PodSucceeded
-	pod.Status.Reason = "PodDeleted"
-	pod.Status.Message = "Pod is deleted"
-	p.notifier(pod)
-
 	return nil
 }
+
 
 // GetPod returns a pod by name that is stored in memory.
 func (p *MockProvider) GetPod(ctx context.Context, namespace, name string) (pod *v1.Pod, err error) {
