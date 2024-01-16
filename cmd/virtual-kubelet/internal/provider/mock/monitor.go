@@ -379,7 +379,99 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 
 // get the shell process status from the pgid
-func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time) *v1.ContainerStatus {
+// func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time) *v1.ContainerStatus {
+// 	pgid, err := getPgidFromContainer(c)
+// 	if err != nil {
+// 		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
+// 		return nil
+// 	}
+
+// 	pids, err := process.Pids()
+// 	if err != nil {
+// 		log.G(context.Background()).WithField("container", c.Name).Error("Error getting pids:", err)
+// 	}
+
+// 	var processStatus []string
+// 	for _, pid := range pids {
+// 		p, err := process.NewProcess(pid)
+// 		if err != nil {
+// 			continue
+// 		}
+
+// 		processPgid, err := syscall.Getpgid(int(pid))
+// 		if err != nil {
+// 			continue
+// 		}
+
+// 		if processPgid == pgid {
+// 			//print the cmd of the process
+// 			cmd, _ := p.Cmdline()
+// 			// if err == nil {
+// 			//  log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
+// 			// }
+
+// 			// get the process status
+// 			status, err := p.Status()
+// 			if err != nil {
+// 				log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting process status:", err)
+// 				return nil
+// 			}
+// 			processStatus = append(processStatus, status)
+// 			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
+// 		}
+// 	}
+
+
+// 	var containerStatus *v1.ContainerStatus
+// 	var containerState *v1.ContainerState
+// 	// if one of the process status is "R" (running), then the container is running
+// 	for _, status := range processStatus {
+// 		if status == "R" {
+// 			containerState = &v1.ContainerState{
+// 				Running: &v1.ContainerStateRunning{
+// 					StartedAt: metav1.NewTime(startTime),
+// 				},
+// 			}
+// 			containerStatus = &v1.ContainerStatus{
+// 				Name:         c.Name,
+// 				State:        *containerState,
+// 				Ready:        true,
+// 				RestartCount: 0,
+// 				Image:        c.Image,
+// 				ImageID:      "",
+// 				ContainerID:  "",
+// 			}
+// 			return containerStatus
+// 		}
+// 	}
+
+	
+
+// 	// if process status has only "zombie" processes, then the container is Completed
+// 	containerState = &v1.ContainerState{
+// 		Terminated: &v1.ContainerStateTerminated{
+// 			Reason:      "",
+// 			Message:     "status: " + strings.Join(processStatus, ", "),
+// 			StartedAt:   metav1.NewTime(startTime),
+// 			FinishedAt:  metav1.NewTime(time.Now()),
+// 			ContainerID: "",
+// 		},
+// 	}
+// 	containerStatus = &v1.ContainerStatus{
+// 		Name:         c.Name,
+// 		State:        *containerState,
+// 		Ready:        true,
+// 		RestartCount: 0,
+// 		Image:        c.Image,
+// 		ImageID:      "",
+// 		ContainerID:  "",
+// 	}
+// 	return containerStatus
+// }
+
+
+// Assuming you have a global map to store the previous status of each container
+func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time, finishTime time.Time, prevStatus map[string]string) *v1.ContainerStatus {
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
 		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
@@ -406,9 +498,6 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		if processPgid == pgid {
 			//print the cmd of the process
 			cmd, _ := p.Cmdline()
-			// if err == nil {
-			//  log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
-			// }
 
 			// get the process status
 			status, err := p.Status()
@@ -421,10 +510,11 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		}
 	}
 
-
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
+	var currentStatus string
 	// if one of the process status is "R" (running), then the container is running
+	log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v\n", prevStatus[c.Name])
 	for _, status := range processStatus {
 		if status == "R" {
 			containerState = &v1.ContainerState{
@@ -441,8 +531,21 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 				ImageID:      "",
 				ContainerID:  "",
 			}
+			currentStatus = "Running"
 			return containerStatus
 		}
+	}
+
+	// if the prevStatus is Running, but the current status is terminated, then set the finishedAt time to now
+	var finishedAt time.Time
+	currentStatus = "Terminated"
+	// switch if prevStatus is Running and current status is Terminated then set finishedAt to now
+	if prevStatus[c.Name] == "Running" && currentStatus == "Terminated" {
+		log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v, Current status: %v\n", prevStatus[c.Name], currentStatus)
+		log.G(context.Background()).WithField("container", c.Name).Infof("Setting finishedAt to %v\n", time.Now())
+		finishedAt = time.Now()
+	}else {
+		finishedAt = finishTime
 	}
 
 	// if process status has only "zombie" processes, then the container is Completed
@@ -451,7 +554,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 			Reason:      "",
 			Message:     "status: " + strings.Join(processStatus, ", "),
 			StartedAt:   metav1.NewTime(startTime),
-			FinishedAt:  metav1.NewTime(time.Now()),
+			FinishedAt:  metav1.Time{Time: finishedAt},
 			ContainerID: "",
 		},
 	}
@@ -467,11 +570,22 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 	return containerStatus
 }
 
+
 // create the pod spec status from the container status
-func createPodSpecStatusFromContainerStatus(pod *v1.Pod, startTime time.Time) *v1.Pod {
+func createPodSpecStatusFromContainerStatus(pod *v1.Pod, startTime time.Time, prevStatus map[string]string) *v1.Pod {
 	var containerStatuses []v1.ContainerStatus
+	getFinishTime := func(pod *v1.Pod) time.Time {
+		var finishTime time.Time
+		for cs := range pod.Status.ContainerStatuses {
+			if pod.Status.ContainerStatuses[cs].State.Terminated != nil {
+				finishTime = pod.Status.ContainerStatuses[cs].State.Terminated.FinishedAt.Time
+			}
+		}
+		return finishTime
+	}
+	finishTime := getFinishTime(pod)
 	for _, c := range pod.Spec.Containers {
-		containerStatus := createContainerStatusFromProcessStatus(&c, startTime)
+		containerStatus := createContainerStatusFromProcessStatus(&c, startTime, finishTime, prevStatus)
 		containerStatuses = append(containerStatuses, *containerStatus)
 	}
 
