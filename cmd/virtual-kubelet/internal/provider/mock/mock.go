@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	// "github.com/pkg/errors"
 	"strconv"
 )
@@ -378,8 +379,21 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 
 	var pods []*v1.Pod
 
+	startTime := p.startTime
 	for _, pod := range p.pods {
-		pods = append(pods, createPodSpecStatusFromContainerStatus(pod))
+		var prevStatus = make(map[string]string)
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			// if container status is Running, then define the prevStatus as "Running"
+			if containerStatus.State.Running != nil {
+				prevStatus[containerStatus.Name] = "Running"
+			}else if containerStatus.State.Terminated != nil {
+				prevStatus[containerStatus.Name] = "Terminated"
+			}else if containerStatus.State.Waiting != nil {
+				prevStatus[containerStatus.Name] = "Waiting"
+			}
+		}
+
+		pods = append(pods, createPodSpecStatusFromContainerStatus(pod, startTime, prevStatus))
 	}
 
 	return pods, nil
