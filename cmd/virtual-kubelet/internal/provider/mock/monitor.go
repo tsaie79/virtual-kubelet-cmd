@@ -529,7 +529,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 				RestartCount: 0,
 				Image:        c.Image,
 				ImageID:      "",
-				ContainerID:  "",
+				ContainerID:  fmt.Sprintf("%v", pgid),
 			}
 			currentStatus = "Running"
 			return containerStatus
@@ -555,7 +555,6 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 			Message:     "status: " + strings.Join(processStatus, ", "),
 			StartedAt:   metav1.NewTime(startTime),
 			FinishedAt:  metav1.Time{Time: finishedAt},
-			ContainerID: "",
 		},
 	}
 	containerStatus = &v1.ContainerStatus{
@@ -565,7 +564,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		RestartCount: 0,
 		Image:        c.Image,
 		ImageID:      "",
-		ContainerID:  "",
+		ContainerID:  fmt.Sprintf("%v", pgid),
 	}
 	return containerStatus
 }
