@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"context"
 	"github.com/virtual-kubelet/virtual-kubelet/log"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 )
 
 func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
@@ -377,3 +379,128 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 	return pgids, pgidMap, nil
 }
 
+
+
+// get the shell process status from the pgid
+func createContainerStatusFromProcessStatus(c *v1.Container) *v1.ContainerStatus {
+	pgid, err := getPgidFromContainer(c)
+	if err != nil {
+		log.G(context.Background()).Error("Error getting pgid:", err)
+		return nil
+	}
+
+	pids, err := process.Pids()
+	if err != nil {
+		log.G(context.Background()).Error("Error getting pids:", err)
+		return nil
+	}
+
+	var processStatus []string
+	for _, pid := range pids {
+		p, err := process.NewProcess(pid)
+		if err != nil {
+			continue
+		}
+
+		processPgid, err := syscall.Getpgid(int(pid))
+		if err != nil {
+			continue
+		}
+
+		if processPgid == pgid {
+			//print the cmd of the process
+			cmd, err := p.Cmdline()
+			if err == nil {
+			 log.G(context.Background()).Errorf("Error getting cmd:", err)
+			}
+
+			// get the process status
+			status, err := p.Status()
+			if err != nil {
+				log.G(context.Background()).Error("Error getting process status:", err)
+				return nil
+			}
+			processStatus = append(processStatus, status)
+			log.G(context.Background()).Infof("pid: %v, pgid: %v, status: %v, cmd: %v\n", pid, pgid, status, cmd)
+		}
+	}
+
+
+	var containerStatus *v1.ContainerStatus
+	var containerState *v1.ContainerState
+	start_time := metav1.NewTime(time.Now())
+	// if one of the process status is "R" (running), then the container is running
+	for _, status := range processStatus {
+		if status == "R" {
+			containerState = &v1.ContainerState{
+				Running: &v1.ContainerStateRunning{
+					StartedAt: start_time,
+				},
+			}
+			containerStatus = &v1.ContainerStatus{
+				Name:         c.Name,
+				State:        *containerState,
+				Ready:        true,
+				RestartCount: 0,
+				Image:        c.Image,
+				ImageID:      "",
+				ContainerID:  "",
+			}
+			return containerStatus
+		}
+	}
+
+	// if process status has only "zombie" processes, then the container is Completed
+	containerState = &v1.ContainerState{
+		Terminated: &v1.ContainerStateTerminated{
+			Reason:      "",
+			Message:     "status: " + strings.Join(processStatus, ", "),
+			StartedAt:   start_time,
+			FinishedAt:  metav1.Now(),
+			ContainerID: "",
+		},
+	}
+	containerStatus = &v1.ContainerStatus{
+		Name:         c.Name,
+		State:        *containerState,
+		Ready:        true,
+		RestartCount: 0,
+		Image:        c.Image,
+		ImageID:      "",
+		ContainerID:  "",
+	}
+	return containerStatus
+}
+
+// create the pod spec status from the container status
+func createPodSpecStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
+	var containerStatuses []v1.ContainerStatus
+	for _, c := range pod.Spec.Containers {
+		containerStatus := createContainerStatusFromProcessStatus(&c)
+		containerStatuses = append(containerStatuses, *containerStatus)
+	}
+
+	// update the pod status
+	pod.Status = v1.PodStatus{
+		Phase:             v1.PodRunning,
+		ContainerStatuses: containerStatuses,
+	}
+
+	// if the messages in the container state are all "Zombie", then the pod is completed
+	checkProcessStatusIsZombie := func(pod *v1.Pod) bool {
+		counter := 0
+		for _, c := range pod.Status.ContainerStatuses {
+			if c.State.Terminated != nil {
+				if c.State.Terminated.Message == "status: Z" {
+					counter++
+				}
+			}
+		}
+		return counter == len(pod.Status.ContainerStatuses)
+	}
+
+	if checkProcessStatusIsZombie(pod) {
+		pod.Status.Phase = v1.PodSucceeded
+	}
+	return pod
+}
