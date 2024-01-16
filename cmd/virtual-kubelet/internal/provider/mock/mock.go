@@ -189,12 +189,20 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
 	}
 
+	// update container status to waiting
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		containerStatus.State.Waiting = &v1.ContainerStateWaiting{
+			Reason: "waiting",
+			Message: "waiting for the container to be created",
+		}
+	}
+
 	errChan, cstatusChan := p.runScriptParallel(ctx, pod, vol)
 	for cstatus := range cstatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
 	}
 	for err := range errChan {
-		log.G(ctx).Infof("error: %v", err)
+		log.G(ctx).Errorf("error running script: %v", err)
 	}
 
 	// update the pod status to success if there is no reasons containing "Failed"
@@ -213,14 +221,11 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// pod.Status.Message = "Commands succeeded to execute"
 	// pod.Status.StartTime = &start_time
     
-
-	pod.Status.Phase = v1.PodRunning
-	pod.Status.Reason = "PodRunning"
-	pod.Status.Message = "Commands are executing"
+	// update pod status to pending, and add createdAt to pod status
+	pod.Status.Phase = v1.PodPending
+	pod.Status.Reason = "PodPending"
+	pod.Status.Message = "Pod is pending"
 	pod.Status.StartTime = &start_time
-
-	p.notifier(pod)
-
 	return nil
 }
 
@@ -375,7 +380,7 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
 
 	for _, pod := range p.pods {
-		pods = append(pods, pod)
+		pods = append(pods, createPodSpecStatusFromContainerStatus(pod))
 	}
 
 	return pods, nil
@@ -637,9 +642,16 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		
 		metricsMap, pgidMap := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
 		log.G(context.Background()).Infof("pgidMap: %v", pgidMap)
-		filteredContainers := filterContainersByPgid(pod, pgidMap) // filter the containers by pgid, avoid duplicate pgid
-		for _, container := range filteredContainers {
+		// filteredContainers := filterContainersByPgid(pod, pgidMap) // filter the containers by pgid, avoid duplicate pgid
+		for _, container := range pod.Spec.Containers {
+			// if continaer state is terminated, skip it
+
 			containerName := container.Name
+			getContainerStatus := getContainerStatus(pod, containerName)
+			if getContainerStatus != nil && getContainerStatus.State.Terminated != nil {
+				continue
+			}
+				
 			pgidLabelInt := pgidMap[containerName]
 			//make pgidStr
 			pgidLabelStr := strconv.Itoa(pgidLabelInt)
@@ -689,6 +701,42 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 // within the provider.
 func (p *MockProvider) NotifyPods(ctx context.Context, notifier func(*v1.Pod)) {
 	p.notifier = notifier
+	go p.statusLoop(ctx)
+
+}
+
+func (p *MockProvider) statusLoop(ctx context.Context) {
+	t := time.NewTimer(5 * time.Second)
+	if !t.Stop() {
+		<-t.C
+	}
+
+	for {
+		t.Reset(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+
+		if err := p.notifyPodStatuses(ctx); err != nil {
+			log.G(ctx).WithError(err).Error("Error updating node statuses")
+		}
+	}
+}
+
+func (p *MockProvider) notifyPodStatuses(ctx context.Context) error {
+	ls, err := p.GetPods(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range ls {
+		p.notifier(pod)
+		log.G(ctx).Infof("pod status: %v", pod.Status)
+	}
+
+	return nil
 }
 
 func buildKeyFromNames(namespace string, name string) (string, error) {
@@ -736,4 +784,14 @@ func filterContainersByPgid(pod *v1.Pod, pgidMap map[string]int) []v1.Container 
     }
 	log.G(context.Background()).Infof("filteredContainers: %v", filteredContainers)
     return filteredContainers
+}
+
+// get container status from the container name
+func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.Name == containerName {
+			return &containerStatus
+		}
+	}
+	return nil
 }
