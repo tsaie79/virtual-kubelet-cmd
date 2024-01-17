@@ -451,21 +451,26 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	log.G(ctx).Info("receive GetPods")
 
 	var pods []*v1.Pod
-
 	startTime := p.startTime
+
+	// Iterate over each pod
 	for _, pod := range p.pods {
-		var prevStatus = make(map[string]string)
+		// Create a map to hold the previous status of each container
+		prevStatus := make(map[string]string)
+
+		// Iterate over each container status in the pod
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			// if container status is Running, then define the prevStatus as "Running"
+			// Determine the previous status of the container
 			if containerStatus.State.Running != nil {
 				prevStatus[containerStatus.Name] = "Running"
-			}else if containerStatus.State.Terminated != nil {
+			} else if containerStatus.State.Terminated != nil {
 				prevStatus[containerStatus.Name] = "Terminated"
-			}else if containerStatus.State.Waiting != nil {
+			} else if containerStatus.State.Waiting != nil {
 				prevStatus[containerStatus.Name] = "Waiting"
 			}
 		}
 
+		// Create a new pod spec with the previous status and append it to the list
 		pods = append(pods, createPodSpecStatusFromContainerStatus(pod, startTime, prevStatus))
 	}
 
