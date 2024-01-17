@@ -169,45 +169,51 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 
 // CreatePod accepts a Pod definition and stores it in memory.
 func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
+	// Start a new span for tracing
 	ctx, span := trace.StartSpan(ctx, "CreatePod")
 	defer span.End()
 
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, pod.Namespace, nameKey, pod.Name)
 
-	log.G(ctx).Infof("receive CreatePod %q", pod.Name)
+	log.G(ctx).Infof("Received CreatePod %q", pod.Name)
 
+	// Build key for pod
 	key, err := buildKey(pod)
 	if err != nil {
 		return err
 	}
+
+	// Store pod in memory
 	p.pods[key] = pod
 
-	start_time := metav1.NewTime(time.Now())
+	// Set start time for pod
+	startTime := metav1.NewTime(time.Now())
 
-	// add volume mounts to the pod
-	vol, err := p.volumes(ctx, pod, volumeAll)
+	// Process pod volumes
+	volumes, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
-		log.G(ctx).Infof("failed to process Pod volumes: %v", err)
+		log.G(ctx).Infof("Failed to process Pod volumes: %v", err)
 	}
 
-	// update container status to waiting
+	// Set initial container status to waiting
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		containerStatus.State.Waiting = &v1.ContainerStateWaiting{
-			Reason: "waiting",
-			Message: "waiting for the container to be created",
+			Reason:  "Waiting",
+			Message: "Waiting for the container to be created",
 		}
 	}
 
-	errChan, cstatusChan := p.runScriptParallel(ctx, pod, vol)
-	for cstatus := range cstatusChan {
-		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
+	// Run scripts in parallel and collect container statuses and errors
+	errChan, containerStatusChan := p.runScriptParallel(ctx, pod, volumes)
+	for containerStatus := range containerStatusChan {
+		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
 	for err := range errChan {
-		log.G(ctx).Errorf("error running script: %v", err)
+		log.G(ctx).Errorf("Error running script: %v", err)
 	}
 
-	// update the pod status to success if there is no reasons containing "Failed"
+	// Check if any container failed
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if strings.Contains(containerStatus.State.Terminated.Reason, "Failed") {
 			pod.Status.Phase = v1.PodFailed
@@ -217,16 +223,12 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		}
 	}
 
-	// pod.Status.Phase = v1.PodSucceeded
-	// pod.Status.Reason = "PodSucceeded"
-	// pod.Status.Message = "Commands succeeded to execute"
-	// pod.Status.StartTime = &start_time
-    
-	// update pod status to pending, and add createdAt to pod status
+	// Set pod status to pending
 	pod.Status.Phase = v1.PodPending
 	pod.Status.Reason = "PodPending"
 	pod.Status.Message = "Pod is pending"
-	pod.Status.StartTime = &start_time
+	pod.Status.StartTime = &startTime
+
 	return nil
 }
 
@@ -501,27 +503,25 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 
 // Capacity returns a resource list containing the capacity limits.
 func (p *MockProvider) capacity() v1.ResourceList {
+	// Get the number of CPUs and total system memory
+	numCPUs := int64(runtime.NumCPU())
+	totalMemory := int64(getSystemTotalMemory())
 
-	var cpuQ resource.Quantity
-	cpuQ.Set(int64(runtime.NumCPU()))
-	var memQ resource.Quantity
-	memQ.Set(int64(getSystemTotalMemory()))
-	// var podsQ resource.Quantity
-	// podsQ.Set(int64(100))
+	// Create quantities for CPU and memory
+	cpuQuantity := resource.Quantity{}
+	cpuQuantity.Set(numCPUs)
 
-	// rl := v1.ResourceList{
-	// 	"cpu":    cpuQ,  //resource.MustParse(p.config.CPU),
-	// 	"memory": memQ,  //resource.MustParse(p.config.Memory),
-	// 	"pods":   podsQ, //resource.MustParse(p.config.Pods),
-	// }
-	// for k, v := range p.config.Others {
-	// 	rl[v1.ResourceName(k)] = resource.MustParse(v)
-	// }
-	// return rl
+	memoryQuantity := resource.Quantity{}
+	memoryQuantity.Set(totalMemory)
+
+	// Set a static quantity for pods
+	podsQuantity := resource.MustParse("1000")
+
+	// Return a resource list with the quantities
 	return v1.ResourceList{
-		"cpu":    cpuQ,
-		"memory": memQ,
-		"pods":   resource.MustParse("1000"),
+		"cpu":    cpuQuantity,
+		"memory": memoryQuantity,
+		"pods":   podsQuantity,
 	}
 }
 
@@ -696,82 +696,63 @@ func (p *MockProvider) getMetricType(metricName string) *dto.MetricType {
 }
 
 func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFamily, error) {
-	var span trace.Span
-	ctx, span = trace.StartSpan(ctx, "GetMetricsResource") //nolint: ineffassign,staticcheck
-	defer span.End()
+    // Start a new span for tracing
+    ctx, span := trace.StartSpan(ctx, "GetMetricsResource")
+    defer span.End()
 
-	var (
-		nodeNameStr      = "node"
-		podNameStr       = "pod"
-		containerNameStr = "container"
-		namespaceStr     = "namespace"
-		pgidStr		  = "pgid"
-	)
-	nodeLabels := []*dto.LabelPair{
-		{
-			Name:  &nodeNameStr,
-			Value: &p.nodeName,
-		},
-	}
+    // Define label names
+    var (
+        nodeNameLabel      = "node"
+        podNameLabel       = "pod"
+        containerNameLabel = "container"
+        namespaceLabel     = "namespace"
+        pgidLabel          = "pgid"
+    )
 
-	metricsMap := p.generateNodeMetrics(nil, "node", nodeLabels)
-	for _, pod := range p.pods {
-		podLabels := []*dto.LabelPair{
-			{
-				Name:  &nodeNameStr,
-				Value: &p.nodeName,
-			},
-			{
-				Name:  &podNameStr,
-				Value: &pod.Name,
-			},
-			{
-				Name:  &namespaceStr,
-				Value: &pod.Namespace,
-			},
-		}
-		
-		metricsMap, pgidMap := p.generatePodMetrics(pod, metricsMap, "pod", podLabels)
-		log.G(context.Background()).Infof("pgidMap: %v", pgidMap)
-		// filteredContainers := filterContainersByPgid(pod, pgidMap) // filter the containers by pgid, avoid duplicate pgid
-		for _, container := range pod.Spec.Containers {
-			// if continaer state is terminated, skip it
+    // Create node labels
+    nodeLabels := []*dto.LabelPair{
+        {
+            Name:  &nodeNameLabel,
+            Value: &p.nodeName,
+        },
+    }
 
-			containerName := container.Name
-			getContainerStatus := getContainerStatus(pod, containerName)
-			if getContainerStatus != nil && getContainerStatus.State.Terminated != nil {
-				continue
-			}
-				
-			pgidLabelInt := pgidMap[containerName]
-			//make pgidStr
-			pgidLabelStr := strconv.Itoa(pgidLabelInt)
-			containerLabels := []*dto.LabelPair{
-				{
-					Name:  &nodeNameStr,
-					Value: &p.nodeName,
-				},
-				{
-					Name:  &namespaceStr,
-					Value: &pod.Namespace,
-				},
-				{
-					Name:  &podNameStr,
-					Value: &pod.Name,
-				},
-				{
-					Name:  &containerNameStr,
-					Value: &containerName, 
-				},
-				{
-					Name:  &pgidStr,
-					Value: &pgidLabelStr,
-				},
-			}
-			metricsMap = p.generateContainerMetrics(&container, metricsMap, "container", containerLabels)
-		}
-	}
+    // Generate node metrics
+    metricsMap := p.generateNodeMetrics(nil, nodeNameLabel, nodeLabels)
 
+    // Iterate over pods to generate pod and container metrics
+    for _, pod := range p.pods {
+        podLabels := []*dto.LabelPair{
+            {Name: &nodeNameLabel, Value: &p.nodeName},
+            {Name: &podNameLabel, Value: &pod.Name},
+            {Name: &namespaceLabel, Value: &pod.Namespace},
+        }
+
+        metricsMap, pgidMap := p.generatePodMetrics(pod, metricsMap, podNameLabel, podLabels)
+
+        // Iterate over containers in the pod
+        for _, container := range pod.Spec.Containers {
+            // Skip if container state is terminated
+            if status := getContainerStatus(pod, container.Name); status != nil && status.State.Terminated != nil {
+                continue
+            }
+
+            // Create container labels
+            pgidLabelStr := strconv.Itoa(pgidMap[container.Name])
+            containerLabels := []*dto.LabelPair{
+                {Name: &nodeNameLabel, Value: &p.nodeName},
+                {Name: &namespaceLabel, Value: &pod.Namespace},
+                {Name: &podNameLabel, Value: &pod.Name},
+                {Name: &containerNameLabel, Value: &container.Name},
+                {Name: &pgidLabel, Value: &pgidLabelStr},
+            }
+
+            // Generate container metrics
+            metricsMap = p.generateContainerMetrics(&container, metricsMap, containerNameLabel, containerLabels)
+        }
+    }
+
+	// Convert metrics map to slice of metric families
 	res := []*dto.MetricFamily{}
 	for metricName := range metricsMap {
 		tempName := metricName
