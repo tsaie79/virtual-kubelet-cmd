@@ -253,32 +253,38 @@ func (p *MockProvider) UpdatePod(ctx context.Context, pod *v1.Pod) error {
 	return nil
 }
 
-// DeletePod deletes the specified pod out of memory.
-func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) (err error) {
+// DeletePod removes the specified pod from memory.
+func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
+	// Start a new span for tracing
 	ctx, span := trace.StartSpan(ctx, "DeletePod")
 	defer span.End()
 
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, pod.Namespace, nameKey, pod.Name)
 
-	log.G(ctx).Infof("receive DeletePod %q", pod.Name)
+	log.G(ctx).Infof("Received DeletePod %q", pod.Name)
 
+	// Build key for pod
 	key, err := buildKey(pod)
 	if err != nil {
 		return err
 	}
 
+	// Check if pod exists in memory
 	if _, exists := p.pods[key]; !exists {
-		return errdefs.NotFound("pod not found")
+		return errdefs.NotFound("Pod not found")
 	}
 
+	// Delete pod from memory
 	p.deletePod(ctx, pod)
-
 	delete(p.pods, key)
+
+	// Update pod status to indicate it has been deleted
 	pod.Status.Phase = v1.PodFailed
 	pod.Status.Reason = "PodDeleted"
-	pod.Status.Message = "Pod is deleted"
+	pod.Status.Message = "Pod has been deleted"
 
+	// Notify about the pod deletion
 	p.notifier(pod)
 
 	return nil
