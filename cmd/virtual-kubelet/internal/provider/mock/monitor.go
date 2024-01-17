@@ -20,469 +20,424 @@ import (
 )
 
 func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
-	var (
+	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = 0.0 // use the time since it's a monotonically increasing value
-		memoryDummyValue   = 0.0
 	)
 
+	// Initialize CPU and memory values
+	cpuValue, memoryValue := 0.0, 0.0
+
+	// Get node stats
 	userTime, systemTime, _, usedMemory, err := getNodeStats()
 	if err != nil {
 		log.G(context.Background()).Error("Error getting user, system, total CPU time, and used memory:", err)
 	} else {
-		cpuDummyValue = userTime + systemTime
-		memoryDummyValue = float64(usedMemory)
+		// Update CPU and memory values
+		cpuValue = userTime + systemTime
+		memoryValue = float64(usedMemory)
 	}
 
-
+	// Initialize metrics map if nil
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
 	}
 
+	// Generate metric names
 	finalCpuMetricName := resourceType + cpuMetricSuffix
 	finalMemoryMetricName := resourceType + memoryMetricSuffix
 
-	newCPUMetric := dto.Metric{
+	// Create new CPU and memory metrics
+	newCPUMetric := &dto.Metric{
 		Label: label,
 		Counter: &dto.Counter{
-			Value: &cpuDummyValue,
+			Value: &cpuValue,
 		},
 	}
-	newMemoryMetric := dto.Metric{
+	newMemoryMetric := &dto.Metric{
 		Label: label,
 		Gauge: &dto.Gauge{
-			Value: &memoryDummyValue,
+			Value: &memoryValue,
 		},
 	}
-	// if metric family exists add to metric array
-	if cpuMetrics, ok := metricsMap[finalCpuMetricName]; ok {
-		metricsMap[finalCpuMetricName] = append(cpuMetrics, &newCPUMetric)
-	} else {
-		metricsMap[finalCpuMetricName] = []*dto.Metric{&newCPUMetric}
-	}
-	if memoryMetrics, ok := metricsMap[finalMemoryMetricName]; ok {
-		metricsMap[finalMemoryMetricName] = append(memoryMetrics, &newMemoryMetric)
-	} else {
-		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
-	}
+
+	// Add new metrics to metrics map
+	metricsMap = addMetricToMap(metricsMap, finalCpuMetricName, newCPUMetric)
+	metricsMap = addMetricToMap(metricsMap, finalMemoryMetricName, newMemoryMetric)
 
 	return metricsMap
 }
 
+
 func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) (map[string][]*dto.Metric, map[string]int) {
-	var (
+	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = 0.0 // use the time since it's a monotonically increasing value
-		memoryDummyValue   = 0.0
 	)
 
+	// Initialize CPU and memory values
+	cpuValue, memoryValue := 0.0, 0.0
+
+	// Get process group IDs from pod
 	pgids, pgidMap, err := getPgidsFromPod(pod)
 	if err != nil {
 		log.G(context.Background()).Error("Error getting pgids:", err)
 		return nil, nil
 	}
 
-	// update label by adding the pgidMap
+	// Update label by adding the pgidMap
 	pgidMapStr := fmt.Sprintf("%v", pgidMap)
-	var pgidLabelKey = "pgidMap"
+	pgidLabelKey := "pgidMap"
 	label = append(label, &dto.LabelPair{
 		Name:  &pgidLabelKey,
 		Value: &pgidMapStr,
 	})
 
-	var (
-		podUserTime = 0.0
-		podSystemTime = 0.0
-		podRSS = 0.0
-		podVMS = 0.0
-	)
+	// Get process metrics for each process group ID
 	for _, pgid := range pgids {
-		// log.G(context.Background()).Infof("Pod name: %v, pgid: %v\n", pod.Name, pgid)
-		userTime, systemTime, rss, vms, err := getProcessesMetrics(pgid)
+		userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 		if err != nil {
 			log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 			continue
 		}
-		podUserTime += userTime
-		podSystemTime += systemTime
-		podRSS += rss
-		podVMS += vms
+
+		// Update CPU and memory values
+		cpuValue += userTime + systemTime
+		memoryValue += rss
 	}
 
+	log.G(context.Background()).WithField("pod", pod.Name).Infof("Pod CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuValue, memoryValue, memoryValue/1024/1024)
 
-
-	cpuDummyValue = podUserTime + podSystemTime
-	memoryDummyValue = podRSS
-	log.G(context.Background()).WithField("pod", pod.Name).Infof("Pod CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
-
+	// Initialize metrics map if nil
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
 	}
 
-	// The rest of the function would be similar to generateNodeMetrics, but using cpuDummyValue and memoryDummyValue
-	// to populate the metrics for the process group.
-
+	// Generate metric names
 	finalCpuMetricName := resourceType + cpuMetricSuffix
 	finalMemoryMetricName := resourceType + memoryMetricSuffix
 
-	newCPUMetric := dto.Metric{
+	// Create new CPU and memory metrics
+	newCPUMetric := &dto.Metric{
 		Label: label,
 		Counter: &dto.Counter{
-			Value: &cpuDummyValue,
+			Value: &cpuValue,
 		},
 	}
-	newMemoryMetric := dto.Metric{
+	newMemoryMetric := &dto.Metric{
 		Label: label,
 		Gauge: &dto.Gauge{
-			Value: &memoryDummyValue,
+			Value: &memoryValue,
 		},
 	}
-	// if metric family exists add to metric array
-	if cpuMetrics, ok := metricsMap[finalCpuMetricName]; ok {
-		metricsMap[finalCpuMetricName] = append(cpuMetrics, &newCPUMetric)
-	} else {
-		metricsMap[finalCpuMetricName] = []*dto.Metric{&newCPUMetric}
-	}
-	if memoryMetrics, ok := metricsMap[finalMemoryMetricName]; ok {
-		metricsMap[finalMemoryMetricName] = append(memoryMetrics, &newMemoryMetric)
-	} else {
-		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
-	}
+
+	// Add new metrics to metrics map
+	metricsMap = addMetricToMap(metricsMap, finalCpuMetricName, newCPUMetric)
+	metricsMap = addMetricToMap(metricsMap, finalMemoryMetricName, newMemoryMetric)
+
 	return metricsMap, pgidMap
 }
 
 
 func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
-	var (
+	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
-		cpuDummyValue      = 0. // use the time since it's a monotonically increasing value
-		memoryDummyValue   = 0.
 	)
+	
+	// Initialize CPU and memory values
+	cpuValue, memoryValue := 0.0, 0.0
+
+	// Get process group ID from container
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
 		log.G(context.Background()).Error("Error getting pgid:", err)
 		return nil
 	}	
 
+	// Get process metrics
 	userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 	if err != nil {
 		log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 		return nil
 	}
-	cpuDummyValue = userTime + systemTime
-	memoryDummyValue = rss
-	log.G(context.Background()).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuDummyValue, memoryDummyValue, memoryDummyValue/1024/1024)
 
+	// Update CPU and memory values
+	cpuValue = userTime + systemTime
+	memoryValue = rss
+
+	log.G(context.Background()).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuValue, memoryValue, memoryValue/1024/1024)
+
+	// Initialize metrics map if nil
 	if metricsMap == nil {
 		metricsMap = map[string][]*dto.Metric{}
 	}
 
-	// The rest of the function would be similar to generateNodeMetrics, but using cpuDummyValue and memoryDummyValue
-	// to populate the metrics for the process group.
-
+	// Generate metric names
 	finalCpuMetricName := resourceType + cpuMetricSuffix
 	finalMemoryMetricName := resourceType + memoryMetricSuffix
 
-	newCPUMetric := dto.Metric{
+	// Create new CPU and memory metrics
+	newCPUMetric := &dto.Metric{
 		Label: label,
 		Counter: &dto.Counter{
-			Value: &cpuDummyValue,
+			Value: &cpuValue,
 		},
 	}
-	newMemoryMetric := dto.Metric{
+	newMemoryMetric := &dto.Metric{
 		Label: label,
 		Gauge: &dto.Gauge{
-			Value: &memoryDummyValue,
+			Value: &memoryValue,
 		},
 	}
-	
-	// if metric family exists add to metric array
-	if cpuMetrics, ok := metricsMap[finalCpuMetricName]; ok {
-		metricsMap[finalCpuMetricName] = append(cpuMetrics, &newCPUMetric)
-	} else {
-		log.G(context.Background()).Errorf("cpuMetrics not found: %v\n", finalCpuMetricName)
-		metricsMap[finalCpuMetricName] = []*dto.Metric{&newCPUMetric}
-	}
-	if memoryMetrics, ok := metricsMap[finalMemoryMetricName]; ok {
-		metricsMap[finalMemoryMetricName] = append(memoryMetrics, &newMemoryMetric)
-	} else {
-		log.G(context.Background()).Errorf("memoryMetrics not found: %v\n", finalMemoryMetricName)
-		metricsMap[finalMemoryMetricName] = []*dto.Metric{&newMemoryMetric}
-	}
+
+	// Add new metrics to metrics map
+	metricsMap = addMetricToMap(metricsMap, finalCpuMetricName, newCPUMetric)
+	metricsMap = addMetricToMap(metricsMap, finalMemoryMetricName, newMemoryMetric)
 
 	return metricsMap
 }
 
-
-func getNodeStats() (float64, float64, float64, uint64, error) {
-    cpuTimes, err := cpu.Times(false)
-    if err != nil {
-        return 0, 0, 0, 0, err
-    }
-
-    var userTime, systemTime, totalCPUTime float64
-    for _, ct := range cpuTimes {
-        userTime += ct.User
-        systemTime += ct.System
-        totalCPUTime += ct.Total()
-    }
-
-    memInfo, err := mem.VirtualMemory()
-    if err != nil {
-        return 0, 0, 0, 0, err
-    }
-
-    return userTime, systemTime, totalCPUTime, memInfo.Used, nil
+// addMetricToMap adds a new metric to the metrics map.
+func addMetricToMap(metricsMap map[string][]*dto.Metric, metricName string, newMetric *dto.Metric) map[string][]*dto.Metric {
+	if existingMetrics, ok := metricsMap[metricName]; ok {
+		metricsMap[metricName] = append(existingMetrics, newMetric)
+	} else {
+		log.G(context.Background()).Errorf("Metrics not found: %v\n", metricName)
+		metricsMap[metricName] = []*dto.Metric{newMetric}
+	}
+	return metricsMap
 }
 
 
-func getProcessesMetrics(pgid int) (float64, float64, float64, float64, error) {
-    pids, err := process.Pids()
-    if err != nil {
-        return 0, 0, 0, 0, err
-    }
+// getNodeStats calculates and returns the total user time, total system time, total CPU time, and used memory for the node.
+func getNodeStats() (totalUserTime float64, totalSystemTime float64, totalCPUTime float64, usedMemory uint64, err error) {
+	// Get the CPU times
+	cpuTimes, err := cpu.Times(false)
+	if err != nil {
+		return
+	}
 
-    var totalUserTime, totalSystemTime, totalRSS, totalVMS float64
+	// Iterate over each CPU time and accumulate the user time, system time, and total CPU time
+	for _, ct := range cpuTimes {
+		totalUserTime += ct.User
+		totalSystemTime += ct.System
+		totalCPUTime += ct.Total()
+	}
 
-    for _, pid := range pids {
-        p, err := process.NewProcess(pid)
-        if err != nil {
-            continue
-        }
+	// Get the virtual memory information
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return
+	}
 
-        processPgid, err := syscall.Getpgid(int(pid))
-        if err != nil {
-            continue
-        }
+	// Get the used memory
+	usedMemory = memInfo.Used
 
-        if processPgid == pgid {
-			// //print the cmd of the process
-			// cmd, err := p.Cmdline()
-			// if err == nil {
-			// 	log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
-			// }
-
-            cpuTimes, err := p.Times()
-            if err == nil {
-                totalUserTime += cpuTimes.User
-                totalSystemTime += cpuTimes.System
-            }
-
-            memInfo, err := p.MemoryInfo()
-            if err == nil {
-                totalRSS += float64(memInfo.RSS)
-                totalVMS += float64(memInfo.VMS)
-            }
-        }
-    }
-
-    return totalUserTime, totalSystemTime, totalRSS, totalVMS, nil
+	return
 }
 
 
-func getPgidFromContainer(c *v1.Container) (int, error) {
-	var pgid_volmount string
-	for _, volMount := range c.VolumeMounts {
-		if strings.Contains(volMount.Name, "pgid") {
-			pgid_volmount = volMount.MountPath
-			pgid_volmount = strings.ReplaceAll(pgid_volmount, "~", os.Getenv("HOME"))
-			pgid_volmount = strings.ReplaceAll(pgid_volmount, "$HOME", os.Getenv("HOME"))
+// getProcessesMetrics calculates and returns the total user time, total system time, total RSS, and total VMS for all processes in a process group.
+func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float64, totalRSS float64, totalVMS float64, err error) {
+	// Get the list of all process IDs
+	pids, err := process.Pids()
+	if err != nil {
+		return
+	}
+
+	// Iterate over each process ID
+	for _, pid := range pids {
+		// Create a new Process instance
+		p, err := process.NewProcess(pid)
+		if err != nil {
+			continue
+		}
+
+		// Get the process group ID of the process
+		processPgid, err := syscall.Getpgid(int(pid))
+		if err != nil {
+			continue
+		}
+
+		// If the process is in the target process group, accumulate its metrics
+		if processPgid == pgid {
+			// Accumulate the CPU times
+			if cpuTimes, err := p.Times(); err == nil {
+				totalUserTime += cpuTimes.User
+				totalSystemTime += cpuTimes.System
+			}
+
+			// Accumulate the memory information
+			if memInfo, err := p.MemoryInfo(); err == nil {
+				totalRSS += float64(memInfo.RSS)
+				totalVMS += float64(memInfo.VMS)
+			}
+		}
+	}
+
+	return
+}
+
+// getPgidFromContainer retrieves the process group ID (pgid) from a container.
+func getPgidFromContainer(container *v1.Container) (int, error) {
+	// Initialize the pgid volume mount path
+	var pgidVolumeMount string
+
+	// Find the pgid volume mount in the container's volume mounts
+	for _, volumeMount := range container.VolumeMounts {
+		if strings.Contains(volumeMount.Name, "pgid") {
+			pgidVolumeMount = volumeMount.MountPath
+			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "~", os.Getenv("HOME"))
+			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "$HOME", os.Getenv("HOME"))
 			break
 		}
 	}
 
-	if pgid_volmount == "" {
+	// Return an error if the pgid volume mount was not found
+	if pgidVolumeMount == "" {
 		return 0, fmt.Errorf("pgid volume mount not found")
 	}
 
-	pgidFile := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
-	log.G(context.Background()).WithField("container", c.Name).Infof("pgid file: %v\n", pgidFile)
-	// open pgid file and read the number in it
-	file, err := os.Open(pgidFile)
+	// Construct the path to the pgid file
+	pgidFilePath := path.Join(pgidVolumeMount, fmt.Sprintf("%s.pgid", container.Name))
+
+	// Log the path to the pgid file
+	log.G(context.Background()).WithField("container", container.Name).Infof("pgid file: %v\n", pgidFilePath)
+
+	// Open the pgid file
+	file, err := os.Open(pgidFilePath)
 	if err != nil {
-		log.G(context.Background()).WithField("container", c.Name).Errorf("error opening pgid file: %v\n", err)
+		log.G(context.Background()).WithField("container", container.Name).Errorf("error opening pgid file: %v\n", err)
+		return 0, err
+	}
+	defer file.Close()
+
+	// Read the pgid from the file
+	scanner := bufio.NewScanner(file)
+	scanner.Scan()
+	pgidString := scanner.Text()
+
+	// Convert the pgid to an integer
+	pgid, err := strconv.Atoi(pgidString)
+	if err != nil {
+		log.G(context.Background()).WithField("container", container.Name).Errorf("error converting pgid to int: %v\n", err)
+		return 0, err
+	}
+
+	// Log the pgid
+	log.G(context.Background()).WithField("container", container.Name).Infof("pgid: %v\n", pgid)
+
+	return pgid, nil
+}
+
+// getPgidsFromPod retrieves the process group IDs (pgids) from a pod.
+func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
+	var pgids []int
+	pgidMap := make(map[string]int)
+
+	// Iterate over each container in the pod
+	for _, container := range pod.Spec.Containers {
+		// Find the pgid volume mount in the container's volume mounts
+		pgidVolumeMount := findPgidVolumeMount(container.VolumeMounts)
+		if pgidVolumeMount == "" {
+			err := fmt.Errorf("pgid volume mount not found")
+			log.G(context.Background()).WithField("container", container.Name).Error(err)
+			return nil, nil, err
+		}
+
+		// Construct the path to the pgid file
+		pgidFilePath := path.Join(pgidVolumeMount, fmt.Sprintf("%s.pgid", container.Name))
+
+		// Read the pgid from the file
+		pgid, err := readPgidFromFile(pgidFilePath)
+		if err != nil {
+			log.G(context.Background()).WithField("container", container.Name).Error(err)
+			return nil, nil, err
+		}
+
+		// Add the pgid to the list and map
+		pgids = appendUnique(pgids, pgid)
+		pgidMap[container.Name] = pgid
+	}
+
+	return pgids, pgidMap, nil
+}
+
+// findPgidVolumeMount finds the pgid volume mount in a list of volume mounts.
+func findPgidVolumeMount(volumeMounts []v1.VolumeMount) string {
+	for _, volumeMount := range volumeMounts {
+		if strings.Contains(volumeMount.Name, "pgid") {
+			pgidVolumeMount := volumeMount.MountPath
+			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "~", os.Getenv("HOME"))
+			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "$HOME", os.Getenv("HOME"))
+			return pgidVolumeMount
+		}
+	}
+	return ""
+}
+
+// readPgidFromFile reads a pgid from a file.
+func readPgidFromFile(filePath string) (int, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
 		return 0, err
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
-	pgidStr := scanner.Text()
-	pgidInt, err := strconv.Atoi(pgidStr)
-	log.G(context.Background()).WithField("container", c.Name).Infof("pgid: %v\n", pgidInt)
-	if err != nil {
-		log.G(context.Background()).WithField("container", c.Name).Errorf("error converting pgid to int: %v\n", err)
-		return 0, err
-	}
-	return pgidInt, nil
+	pgidString := scanner.Text()
+
+	return strconv.Atoi(pgidString)
 }
 
-func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
-	var pgids []int
-	// define a map that stores the container name and its pgid
-	var pgidMap = make(map[string]int)
-	for _, c := range pod.Spec.Containers {
-		var pgid_volmount string
-		for _, volMount := range c.VolumeMounts {
-			if strings.Contains(volMount.Name, "pgid") {
-				pgid_volmount = volMount.MountPath
-				pgid_volmount = strings.ReplaceAll(pgid_volmount, "~", os.Getenv("HOME"))
-				pgid_volmount = strings.ReplaceAll(pgid_volmount, "$HOME", os.Getenv("HOME"))
-				break
-			}
+// appendUnique appends a value to a slice if it's not already in the slice.
+func appendUnique(slice []int, value int) []int {
+	for _, v := range slice {
+		if v == value {
+			return slice
 		}
-	
-		if pgid_volmount == "" {
-			err := fmt.Errorf("pgid volume mount not found")
-			log.G(context.Background()).WithField("container", c.Name).Errorf("pgid volume mount not found: %v\n", err)
-			return nil, nil, err
-		}
-
-		pgidFile := path.Join(pgid_volmount, fmt.Sprintf("%s.pgid", c.Name))
-		// open pgid file and read the number in it
-		file, err := os.Open(pgidFile)
-		if err != nil {
-			log.G(context.Background()).WithField("container", c.Name).Errorf("error opening pgid file: %v\n", err)
-			return nil, nil, err
-		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		scanner.Scan()
-		pgidStr := scanner.Text()
-		pgidInt, err := strconv.Atoi(pgidStr)
-		if err != nil {
-			log.G(context.Background()).WithField("container", c.Name).Errorf("error converting pgid to int: %v\n", err)
-			return nil, nil, err
-		}
-		pgids = append(pgids, pgidInt)
-		pgidMap[c.Name] = pgidInt
-
-		// remove duplicate pgids and preserve only the unique ones
-		// https://www.geeksforgeeks.org/how-to-remove-duplicate-values-from-slice-in-golang/
-		keys := make(map[int]bool)
-		list := []int{}
-		for _, entry := range pgids {
-			if _, value := keys[entry]; !value {
-				keys[entry] = true
-				list = append(list, entry)
-			}
-		}
-		pgids = list
 	}
-	return pgids, pgidMap, nil
+	return append(slice, value)
 }
 
 
 
-// get the shell process status from the pgid
-// func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time) *v1.ContainerStatus {
-// 	pgid, err := getPgidFromContainer(c)
-// 	if err != nil {
-// 		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
-// 		return nil
-// 	}
-
-// 	pids, err := process.Pids()
-// 	if err != nil {
-// 		log.G(context.Background()).WithField("container", c.Name).Error("Error getting pids:", err)
-// 	}
-
-// 	var processStatus []string
-// 	for _, pid := range pids {
-// 		p, err := process.NewProcess(pid)
-// 		if err != nil {
-// 			continue
-// 		}
-
-// 		processPgid, err := syscall.Getpgid(int(pid))
-// 		if err != nil {
-// 			continue
-// 		}
-
-// 		if processPgid == pgid {
-// 			//print the cmd of the process
-// 			cmd, _ := p.Cmdline()
-// 			// if err == nil {
-// 			//  log.G(context.Background()).WithField("cmd", cmd).Errorf("Error getting cmd:", err)
-// 			// }
-
-// 			// get the process status
-// 			status, err := p.Status()
-// 			if err != nil {
-// 				log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting process status:", err)
-// 				return nil
-// 			}
-// 			processStatus = append(processStatus, status)
-// 			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
-// 		}
-// 	}
-
-
-// 	var containerStatus *v1.ContainerStatus
-// 	var containerState *v1.ContainerState
-// 	// if one of the process status is "R" (running), then the container is running
-// 	for _, status := range processStatus {
-// 		if status == "R" {
-// 			containerState = &v1.ContainerState{
-// 				Running: &v1.ContainerStateRunning{
-// 					StartedAt: metav1.NewTime(startTime),
-// 				},
-// 			}
-// 			containerStatus = &v1.ContainerStatus{
-// 				Name:         c.Name,
-// 				State:        *containerState,
-// 				Ready:        true,
-// 				RestartCount: 0,
-// 				Image:        c.Image,
-// 				ImageID:      "",
-// 				ContainerID:  "",
-// 			}
-// 			return containerStatus
-// 		}
-// 	}
-
-	
-
-// 	// if process status has only "zombie" processes, then the container is Completed
-// 	containerState = &v1.ContainerState{
-// 		Terminated: &v1.ContainerStateTerminated{
-// 			Reason:      "",
-// 			Message:     "status: " + strings.Join(processStatus, ", "),
-// 			StartedAt:   metav1.NewTime(startTime),
-// 			FinishedAt:  metav1.NewTime(time.Now()),
-// 			ContainerID: "",
-// 		},
-// 	}
-// 	containerStatus = &v1.ContainerStatus{
-// 		Name:         c.Name,
-// 		State:        *containerState,
-// 		Ready:        true,
-// 		RestartCount: 0,
-// 		Image:        c.Image,
-// 		ImageID:      "",
-// 		ContainerID:  "",
-// 	}
-// 	return containerStatus
-// }
-
-
-// Assuming you have a global map to store the previous status of each container
+// createContainerStatusFromProcessStatus creates a container status from process status.
 func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time, finishTime time.Time, prevStatus map[string]string) *v1.ContainerStatus {
+	// Get the process group ID (pgid) from the container
 	pgid, err := getPgidFromContainer(c)
 	if err != nil {
-		log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting pgid:", err)
+		logError("Error getting pgid:", c.Name, err)
 		return nil
 	}
 
+	// Get the process IDs (pids)
 	pids, err := process.Pids()
 	if err != nil {
-		log.G(context.Background()).WithField("container", c.Name).Error("Error getting pids:", err)
+		logError("Error getting pids:", c.Name, err)
+		return nil
 	}
 
+	// Get the process status for each pid
+	processStatus := getProcessStatus(pids, pgid, c.Name)
+	if processStatus == nil {
+		return nil
+	}
+
+	// Determine the container status
+	containerStatus := determineContainerStatus(c, processStatus, pgid, startTime, finishTime, prevStatus)
+	return containerStatus
+}
+
+// logError logs an error message.
+func logError(message string, containerName string, err error) {
+	log.G(context.Background()).WithField("container", containerName).Errorf(message, err)
+}
+
+// getProcessStatus gets the process status for each pid.
+func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 	var processStatus []string
 	for _, pid := range pids {
 		p, err := process.NewProcess(pid)
@@ -496,24 +451,25 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		}
 
 		if processPgid == pgid {
-			//print the cmd of the process
 			cmd, _ := p.Cmdline()
-
-			// get the process status
 			status, err := p.Status()
 			if err != nil {
-				log.G(context.Background()).WithField("container", c.Name).Errorf("Error getting process status:", err)
+				logError("Error getting process status:", containerName, err)
 				return nil
 			}
 			processStatus = append(processStatus, status)
 			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
 		}
 	}
+	return processStatus
+}
 
+// determineContainerStatus determines the container status.
+func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, startTime time.Time, finishTime time.Time, prevStatus map[string]string) *v1.ContainerStatus {
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentStatus string
-	// if one of the process status is "R" (running), then the container is running
+
 	log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v\n", prevStatus[c.Name])
 	for _, status := range processStatus {
 		if status == "R" {
@@ -522,33 +478,22 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 					StartedAt: metav1.NewTime(startTime),
 				},
 			}
-			containerStatus = &v1.ContainerStatus{
-				Name:         c.Name,
-				State:        *containerState,
-				Ready:        true,
-				RestartCount: 0,
-				Image:        c.Image,
-				ImageID:      "",
-				ContainerID:  fmt.Sprintf("%v", pgid),
-			}
+			containerStatus = createContainerStatus(c, containerState, pgid)
 			currentStatus = "Running"
 			return containerStatus
 		}
 	}
 
-	// if the prevStatus is Running, but the current status is terminated, then set the finishedAt time to now
 	var finishedAt time.Time
 	currentStatus = "Terminated"
-	// switch if prevStatus is Running and current status is Terminated then set finishedAt to now
 	if prevStatus[c.Name] == "Running" && currentStatus == "Terminated" {
 		log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v, Current status: %v\n", prevStatus[c.Name], currentStatus)
 		log.G(context.Background()).WithField("container", c.Name).Infof("Setting finishedAt to %v\n", time.Now())
 		finishedAt = time.Now()
-	}else {
+	} else {
 		finishedAt = finishTime
 	}
 
-	// if process status has only "zombie" processes, then the container is Completed
 	containerState = &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			Reason:      "",
@@ -557,7 +502,13 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 			FinishedAt:  metav1.Time{Time: finishedAt},
 		},
 	}
-	containerStatus = &v1.ContainerStatus{
+	containerStatus = createContainerStatus(c, containerState, pgid)
+	return containerStatus
+}
+
+// createContainerStatus creates a container status.
+func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int) *v1.ContainerStatus {
+	return &v1.ContainerStatus{
 		Name:         c.Name,
 		State:        *containerState,
 		Ready:        true,
@@ -566,49 +517,54 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		ImageID:      "",
 		ContainerID:  fmt.Sprintf("%v", pgid),
 	}
-	return containerStatus
 }
 
 
-// create the pod spec status from the container status
-func createPodSpecStatusFromContainerStatus(pod *v1.Pod, startTime time.Time, prevStatus map[string]string) *v1.Pod {
+// createPodStatusFromContainerStatus creates the pod status from the container status.
+func createPodStatusFromContainerStatus(pod *v1.Pod, startTime time.Time, prevStatus map[string]string) *v1.Pod {
 	var containerStatuses []v1.ContainerStatus
-	getFinishTime := func(pod *v1.Pod) time.Time {
-		var finishTime time.Time
-		for cs := range pod.Status.ContainerStatuses {
-			if pod.Status.ContainerStatuses[cs].State.Terminated != nil {
-				finishTime = pod.Status.ContainerStatuses[cs].State.Terminated.FinishedAt.Time
-			}
-		}
-		return finishTime
-	}
-	finishTime := getFinishTime(pod)
-	for _, c := range pod.Spec.Containers {
-		containerStatus := createContainerStatusFromProcessStatus(&c, startTime, finishTime, prevStatus)
+
+	// Get the finish time of the pod
+	finishTime := getPodFinishTime(pod)
+
+	// Create a container status for each container in the pod
+	for _, container := range pod.Spec.Containers {
+		containerStatus := createContainerStatusFromProcessStatus(&container, startTime, finishTime, prevStatus)
 		containerStatuses = append(containerStatuses, *containerStatus)
 	}
 
-	// update the pod status
+	// Update the pod status
 	pod.Status = v1.PodStatus{
 		Phase:             v1.PodRunning,
 		ContainerStatuses: containerStatuses,
 	}
 
-	// if the messages in the container state are all "Zombie", then the pod is completed
-	checkProcessStatusIsZombie := func(pod *v1.Pod) bool {
-		counter := 0
-		for _, c := range pod.Status.ContainerStatuses {
-			if c.State.Terminated != nil {
-				if c.State.Terminated.Message == "status: Z" {
-					counter++
-				}
-			}
-		}
-		return counter == len(pod.Status.ContainerStatuses)
-	}
-
-	if checkProcessStatusIsZombie(pod) {
+	// If all the containers in the pod are in the "Zombie" state, then the pod is completed
+	if allContainersAreZombies(pod) {
 		pod.Status.Phase = v1.PodSucceeded
 	}
+
 	return pod
+}
+
+// getPodFinishTime gets the finish time of the pod.
+func getPodFinishTime(pod *v1.Pod) time.Time {
+	var finishTime time.Time
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Terminated != nil {
+			finishTime = containerStatus.State.Terminated.FinishedAt.Time
+		}
+	}
+	return finishTime
+}
+
+// allContainersAreZombies checks if all the containers in the pod are in the "Zombie" state.
+func allContainersAreZombies(pod *v1.Pod) bool {
+	zombieCounter := 0
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Message == "status: Z" {
+			zombieCounter++
+		}
+	}
+	return zombieCounter == len(pod.Status.ContainerStatuses)
 }
