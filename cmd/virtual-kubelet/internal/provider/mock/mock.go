@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -20,14 +21,16 @@ import (
 	// vklogv2 "github.com/virtual-kubelet/virtual-kubelet/log/klogv2"
 
 	// "github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider/kubernetes"
+	"syscall"
+
+	"github.com/shirou/gopsutil/process"
 	"github.com/virtual-kubelet/virtual-kubelet/node/api"
 	stats "github.com/virtual-kubelet/virtual-kubelet/node/api/statsv1alpha1"
 	"github.com/virtual-kubelet/virtual-kubelet/trace"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/shirou/gopsutil/process"
-	"syscall"
+
 	// "github.com/pkg/errors"
 	"strconv"
 )
@@ -204,8 +207,22 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		}
 	}
 
+
+	// create a dir to store the pgid of each container at $HOME/.pgid
+	// if the dir already exists, then skip it
+	// if the dir does not exist, then create it
+	// allow only user to read and write the dir
+	pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
+	if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
+		err := os.Mkdir(pgidDir, 0700)
+		if err != nil {
+			log.G(ctx).Infof("Failed to create pgid dir: %v", err)
+			return err
+		}
+	}
+
 	// Run scripts in parallel and collect container statuses and errors
-	errChan, containerStatusChan := p.runScriptParallel(ctx, pod, volumes)
+	errChan, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
 	for containerStatus := range containerStatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
@@ -754,7 +771,8 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
             }
 
             // Generate container metrics
-            metricsMap = p.generateContainerMetrics(&container, metricsMap, containerNameLabel, containerLabels)
+			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+            metricsMap = p.generateContainerMetrics(&container, metricsMap, containerNameLabel, containerLabels, pgidFile)
         }
     }
 
