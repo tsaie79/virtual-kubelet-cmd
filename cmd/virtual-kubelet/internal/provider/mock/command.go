@@ -25,7 +25,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
 	scripts := make(map[string][]string)
 	for _, c := range pod.Spec.Containers {
-		log.G(ctx).WithField("container_name", c.Name).Info("container name")
+		log.G(ctx).WithField("container", c.Name).Info("container")
 
 		scripts[c.Name] = []string{}
 		for _, volMount := range c.VolumeMounts {
@@ -123,7 +123,7 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 }
 
 // run container in parallel
-func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string) (chan error, chan v1.ContainerStatus) {
+func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
 	p.collectScripts(ctx, pod, vol)
 
 	var wg sync.WaitGroup
@@ -209,22 +209,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			// write the leader pid to the leader_pid file
 			// name leader_pid file as container name + .leader_pid
 			if !runWithFifo {
-				var pgid_volmount string
-				for _, volMount := range c.VolumeMounts {
-					if strings.Contains(volMount.Name, "pgid") {
-						pgid_volmount = volMount.MountPath
-					}
-				}
-
-				if pgid_volmount == "" {
-					log.G(ctx).WithField("container", c.Name).Errorf("pgid volume mount not found for container")
-					err = fmt.Errorf("pgid volume mount not found for container %s", c.Name)
-					errChan <- err
-					return
-				}
-
-				pgidFile := path.Join(c.Name + ".pgid")
-				err = writePgid(ctx, pgid_volmount, pgidFile, pgid)
+				pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, c.Name))
+				log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile")
+				err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
 				if err != nil {
 					// report error to errChan
 					errChan <- err
@@ -246,33 +233,6 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 					return
 				}
 			}
-
-			// update the container status to waiting
-			// cstatusChan <- v1.ContainerStatus{
-			// 	Name:         c.Name,
-			// 	Image:        c.Image,
-			// 	Ready:        false,
-			// 	RestartCount: 0,
-			// 	State: v1.ContainerState{
-			// 		Waiting: &v1.ContainerStateWaiting{
-			// 			Message:    fmt.Sprintf("container %s is waiting for the job to finish", c.Name),					},
-			// 	},
-			// }
-
-			// cstatusChan <- v1.ContainerStatus{
-			// 	Name:         c.Name,
-			// 	Image:        c.Image,
-			// 	Ready:        true,
-			// 	RestartCount: 0,
-			// 	State: v1.ContainerState{
-			// 		Terminated: &v1.ContainerStateTerminated{
-			// 			Message:    fmt.Sprintf("container %s executed successfully", c.Name),
-			// 			Reason:     string(v1.PodSucceeded),
-			// 			FinishedAt: metav1.NewTime(time.Now()),
-			// 			StartedAt:  time_start,
-			// 		},
-			// 	},
-			// }
 		}(c)
 	}
 
@@ -306,28 +266,6 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	// 	pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
 	// 	log.G(ctx).WithField("container", c.Name).Infof("container status: %v", cstatus)
 	// }
-}
-
-func writePgid(ctx context.Context, volmount string, file string, pgid int) error {
-	volmount = strings.ReplaceAll(volmount, "~", home_dir)
-	volmount = strings.ReplaceAll(volmount, "$HOME", home_dir)
-	// create the destination directory if it does not exist
-	err := exec.Command("mkdir", "-p", volmount).Run()
-	if err != nil {
-		log.G(ctx).WithField("volmount", volmount).Errorf("failed to create directory; error: %v", err)
-		return err
-	}
-
-	//write the leader pid to the leader_pid file
-	// name leader pid file as container name + .leader_pid
-	file = path.Join(volmount, file)
-	err = ioutil.WriteFile(file, []byte(fmt.Sprintf("%v", pgid)), 0644)
-	if err != nil {
-		log.G(ctx).WithField("file", file).Errorf("failed to write pgid to file; error: %v", err)
-		return err
-	}
-	log.G(ctx).WithField("file", file).Infof("successfully wrote pgid to file")
-	return nil
 }
 
 func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, error) {
