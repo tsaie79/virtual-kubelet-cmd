@@ -287,44 +287,6 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 }
 
 
-func writeCmdToFifo(ctx context.Context, command []string, args string, env []v1.EnvVar) error {
-	homeDir := os.Getenv("HOME")
-	fifoPath := homeDir + "/hostpipe"
-	fn := fifoPath + "/vk-cmd"
-	flag := syscall.O_WRONLY 
-	perm := os.FileMode(0666)
-
-	fifo, err := fifo.OpenFifo(ctx, fn, flag, perm)
-	if err != nil {
-		log.G(ctx).WithField("fifo", fn).Errorf("failed to open fifo: %v", err)
-		return err
-	}
-
-	// write env to a single string like "export key1='value1'&& export key2='value2'..."
-	var envString string
-	for _, e := range env {
-		// if type of value is string, use single quotes to prevent shell from interpreting the value
-		envString += "export " + e.Name + "=\"" + e.Value + "\" && "
-		//if type of value is int or float, no quotes are needed
-	}
-
-
-	//use single quotes to around the argsString to prevent shell from interpreting the args
-	cmdString := strings.Join(command, " ")
-	cmd := cmdString + " '" + envString + args + "'"
-
-	log.G(ctx).WithField("cmd", cmd).Info("Running cmd")
-
-	_, err = fifo.Write([]byte(cmd))
-	if err != nil {
-		log.G(ctx).WithField("fifo", fn).Errorf("failed to write to fifo: %v", err)
-		return err
-	}
-
-	return nil
-}
-
-
 
 
 func copyFile(ctx context.Context, src string, dst string, filename string) error {
