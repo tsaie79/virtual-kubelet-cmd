@@ -232,7 +232,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 
 	// Check if any container failed
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if strings.Contains(containerStatus.State.Terminated.Reason, "Failed") {
+		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.ExitCode != 0 {
 			pod.Status.Phase = v1.PodFailed
 			pod.Status.Message = string(v1.PodFailed)
 			p.notifier(pod)
@@ -476,27 +476,27 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	log.G(ctx).Info("receive GetPods")
 
 	var pods []*v1.Pod
-	startTime := p.startTime
 
 	// Iterate over each pod
 	for _, pod := range p.pods {
 		// Create a map to hold the previous status of each container
-		prevStatus := make(map[string]string)
+		prevContainerStateStrings := make(map[string]string)
 
 		// Iterate over each container status in the pod
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			// Determine the previous status of the container``
 			if containerStatus.State.Running != nil {
-				prevStatus[containerStatus.Name] = "Running"
+				prevContainerStateStrings[containerStatus.Name] = "Running"
 			} else if containerStatus.State.Terminated != nil {
-				prevStatus[containerStatus.Name] = "Terminated"
+				prevContainerStateStrings[containerStatus.Name] = "Terminated"
 			} else if containerStatus.State.Waiting != nil {
-				prevStatus[containerStatus.Name] = "Waiting"
+				prevContainerStateStrings[containerStatus.Name] = "Waiting"
 			}
 		}
+		log.G(ctx).Infof("prevContainerStateStrings: %v", prevContainerStateStrings)
 
 		// Create a new pod spec with the previous status and append it to the list
-		pods = append(pods, createPodStatusFromContainerStatus(pod, startTime, prevStatus))
+		pods = append(pods, p.createPodStatusFromContainerStatus(pod, prevContainerStateStrings))
 	}
 
 	return pods, nil
