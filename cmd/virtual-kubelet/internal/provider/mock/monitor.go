@@ -138,7 +138,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	return metricsMap, pgidMap
 }
 
-func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
+func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair, pgidFile string) map[string][]*dto.Metric {
 	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
@@ -148,7 +148,7 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 	cpuValue, memoryValue := 0.0, 0.0
 
 	// Get process group ID from container
-	pgid, err := getPgidFromContainer(c)
+	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
 		log.G(context.Background()).Error("Error getting pgid:", err)
 		return nil
@@ -276,54 +276,32 @@ func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float
 	return
 }
 
-// getPgidFromContainer retrieves the process group ID (pgid) from a container.
-func getPgidFromContainer(container *v1.Container) (int, error) {
-	// Initialize the pgid volume mount path
-	var pgidVolumeMount string
-
-	// Find the pgid volume mount in the container's volume mounts
-	for _, volumeMount := range container.VolumeMounts {
-		if strings.Contains(volumeMount.Name, "pgid") {
-			pgidVolumeMount = volumeMount.MountPath
-			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "~", os.Getenv("HOME"))
-			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "$HOME", os.Getenv("HOME"))
-			break
-		}
-	}
-
-	// Return an error if the pgid volume mount was not found
-	if pgidVolumeMount == "" {
-		return 0, fmt.Errorf("pgid volume mount not found")
-	}
-
-	// Construct the path to the pgid file
-	pgidFilePath := path.Join(pgidVolumeMount, fmt.Sprintf("%s.pgid", container.Name))
-
-	// Log the path to the pgid file
-	log.G(context.Background()).WithField("container", container.Name).Infof("pgid file: %v\n", pgidFilePath)
-
+// getPgidFromPgidFile retrieves the process group ID (pgid) from a file.
+func getPgidFromPgidFile(pgidFilePath string) (int, error) {
 	// Open the pgid file
 	file, err := os.Open(pgidFilePath)
 	if err != nil {
-		log.G(context.Background()).WithField("container", container.Name).Errorf("error opening pgid file: %v\n", err)
+		log.G(context.Background()).WithField("pgidFilePath", pgidFilePath).Error("Failed to open pgid file:", err)
 		return 0, err
 	}
 	defer file.Close()
 
-	// Read the pgid from the file
+	// Create a new scanner to read the file
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
+
+	// Get the pgid as a string
 	pgidString := scanner.Text()
 
-	// Convert the pgid to an integer
+	// Convert the pgid string to an integer
 	pgid, err := strconv.Atoi(pgidString)
 	if err != nil {
-		log.G(context.Background()).WithField("container", container.Name).Errorf("error converting pgid to int: %v\n", err)
+		log.G(context.Background()).WithField("pgidFilePath", pgidFilePath).Error("Failed to convert pgid to integer:", err)
 		return 0, err
 	}
 
 	// Log the pgid
-	log.G(context.Background()).WithField("container", container.Name).Infof("pgid: %v\n", pgid)
+	log.G(context.Background()).WithField("pgidFilePath", pgidFilePath).Infof("pgid: %v\n", pgid)
 
 	return pgid, nil
 }
@@ -335,16 +313,8 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 	// Iterate over each container in the pod
 	for _, container := range pod.Spec.Containers {
-		// Find the pgid volume mount in the container's volume mounts
-		pgidVolumeMount := findPgidVolumeMount(container.VolumeMounts)
-		if pgidVolumeMount == "" {
-			err := fmt.Errorf("pgid volume mount not found")
-			log.G(context.Background()).WithField("container", container.Name).Error(err)
-			return nil, nil, err
-		}
-
 		// Construct the path to the pgid file
-		pgidFilePath := path.Join(pgidVolumeMount, fmt.Sprintf("%s.pgid", container.Name))
+		pgidFilePath := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
 
 		// Read the pgid from the file
 		pgid, err := readPgidFromFile(pgidFilePath)
@@ -364,9 +334,9 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
-func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time, finishTime time.Time, prevStatus map[string]string) *v1.ContainerStatus {
+func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, containerStartTime map[string]metav1.Time, containerFinishTime map[string]metav1.Time, pgidFile string) *v1.ContainerStatus {
 	// Get the process group ID (pgid) from the container
-	pgid, err := getPgidFromContainer(c)
+	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
 		logError("Error getting pgid:", c.Name, err)
 		return nil
@@ -385,24 +355,72 @@ func createContainerStatusFromProcessStatus(c *v1.Container, startTime time.Time
 		return nil
 	}
 
-	// Determine the container status
-	containerStatus := determineContainerStatus(c, processStatus, pgid, startTime, finishTime, prevStatus)
+	log.G(context.Background()).WithField("container", c.Name).Infof("Previous state: %v\n", prevContainerState[c.Name])
+	// Determine the container status 
+	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name])
 	return containerStatus
 }
 
 // createPodStatusFromContainerStatus creates the pod status from the container status.
-func createPodStatusFromContainerStatus(pod *v1.Pod, startTime time.Time, prevStatus map[string]string) *v1.Pod {
+func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod, prevContainerStateStrings map[string]string) *v1.Pod {
 	var containerStatuses []v1.ContainerStatus
+	// Get the previous status of the containers in the pod and previous start time and finish time of the containers in the pod
+	containerStartTime := make(map[string]metav1.Time)
+	containerFinishTime := make(map[string]metav1.Time)
 
-	// Get the finish time of the pod
-	finishTime := getPodFinishTime(pod)
+
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		log.G(context.Background()).WithField("container", containerStatus.Name).Infof("Container status: %v\n", containerStatus)
+		prevContainerStateString := prevContainerStateStrings[containerStatus.Name]
+		switch prevContainerStateString {
+		case "Running":
+			if containerStatus.State.Running != nil {
+				containerStartTime[containerStatus.Name] = containerStatus.State.Running.StartedAt
+				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Running)
+			}else if containerStatus.State.Terminated != nil {
+				containerStartTime[containerStatus.Name] = containerStatus.State.Terminated.StartedAt
+				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Terminated)
+
+			}
+		case "Waiting":
+			if containerStatus.State.Waiting != nil {
+				containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Waiting)
+
+			}else if containerStatus.State.Running != nil {
+				containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Running)
+
+			}
+		case "Terminated":
+			if containerStatus.State.Terminated != nil {
+				containerStartTime[containerStatus.Name] = containerStatus.State.Terminated.StartedAt
+				containerFinishTime[containerStatus.Name] = containerStatus.State.Terminated.FinishedAt
+				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Terminated)
+
+			}
+		default:
+			containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
+			containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+			log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State)
+
+		}
+	}
+
 
 	// Create a container status for each container in the pod
 	for _, container := range pod.Spec.Containers {
-		containerStatus := createContainerStatusFromProcessStatus(&container, startTime, finishTime, prevStatus)
+		log.G(context.Background()).WithField("container", container.Name).Infof("prevContainerState: %v\n", prevContainerStateStrings)
+		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+		// log.G(context.Background()).WithField("container", container.Name).Infof("prevcntainerstate: %v\n", prevContainerState[container.Name])
+		containerStatus := createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile)
 		containerStatuses = append(containerStatuses, *containerStatus)
 	}
-
+	
 	// Update the pod status
 	pod.Status = v1.PodStatus{
 		Phase:             v1.PodRunning,
@@ -473,12 +491,12 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 }
 
 // determineContainerStatus determines the container status.
-func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, startTime time.Time, finishTime time.Time, prevStatus map[string]string) *v1.ContainerStatus {
+func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string) *v1.ContainerStatus {
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
-	var currentStatus string
+	var currentContainerState string
 
-	log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v\n", prevStatus[c.Name])
+	log.G(context.Background()).WithField("container", c.Name).Infof("Previous state: %v\n", prevContainerStateString)
 	var allZ = true
 	for _, status := range processStatus {
 		if status != "Z" {
@@ -488,31 +506,55 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 	}
 
 	if allZ {
-		currentStatus = "Terminated"
-		var finishedAt time.Time
-		if prevStatus[c.Name] == "Running" && currentStatus == "Terminated" {
-			log.G(context.Background()).WithField("container", c.Name).Infof("Previous status: %v, Current status: %v\n", prevStatus[c.Name], currentStatus)
-			log.G(context.Background()).WithField("container", c.Name).Infof("Setting finishedAt to %v\n", time.Now())
-			finishedAt = time.Now()
-		} else {
-			finishedAt = finishTime
-		}
+		currentContainerState = "Terminated"
+	}else{
+		currentContainerState = "Running"
+	}
+	log.G(context.Background()).WithField("container", c.Name).Infof("Current state: %v\n", currentContainerState)
 
-		containerState = &v1.ContainerState{
-			Terminated: &v1.ContainerStateTerminated{
-				Reason:     "",
-				Message:    "status: " + strings.Join(processStatus, ", "),
-				StartedAt:  metav1.NewTime(startTime),
-				FinishedAt: metav1.Time{Time: finishedAt},
-			},
+	switch prevContainerStateString {
+	case "Waiting":
+		if currentContainerState == "Running" {
+			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Waiting to Running\n")
+			containerState = &v1.ContainerState{
+				Running: &v1.ContainerStateRunning{
+					StartedAt: metav1.NewTime(containerStartTime),
+				},
+			}
 		}
-	} else {
-		containerState = &v1.ContainerState{
-			Running: &v1.ContainerStateRunning{
-				StartedAt: metav1.NewTime(startTime),
-			},
+	case "Running":
+		if currentContainerState == "Running" {
+			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Running to Running\n")
+			containerState = &v1.ContainerState{
+				Running: &v1.ContainerStateRunning{
+					StartedAt: metav1.NewTime(containerStartTime),
+				},
+			}
+		} else if currentContainerState == "Terminated" {
+			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Running to Terminated\n")
+			containerState = &v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{
+					StartedAt:  metav1.NewTime(containerStartTime),
+					FinishedAt: metav1.NewTime(containerFinishTime),
+					ExitCode:   0,
+					Reason:     fmt.Sprintf("Status: %s", strings.Join(processStatus, ",")),
+					Message:    fmt.Sprintf("Container %s completed successfully", c.Name),
+				},
+			}
 		}
-		currentStatus = "Running"
+	case "Terminated":
+		if currentContainerState == "Terminated" {
+			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Terminated to Terminated\n")
+			containerState = &v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{
+					StartedAt:  metav1.NewTime(containerStartTime),
+					FinishedAt: metav1.NewTime(containerFinishTime),
+					ExitCode:   0,
+					Reason:     fmt.Sprintf("Status: %s", strings.Join(processStatus, ",")),
+					Message:    fmt.Sprintf("Container %s completed successfully", c.Name),
+				},
+			}
+		}
 	}
 
 	containerStatus = createContainerStatus(c, containerState, pgid)
@@ -521,6 +563,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 
 // createContainerStatus creates a container status.
 func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int) *v1.ContainerStatus {
+	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
 	return &v1.ContainerStatus{
 		Name:         c.Name,
 		State:        *containerState,
@@ -530,19 +573,6 @@ func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, p
 		ImageID:      "",
 		ContainerID:  fmt.Sprintf("%v", pgid),
 	}
-}
-
-// findPgidVolumeMount finds the pgid volume mount in a list of volume mounts.
-func findPgidVolumeMount(volumeMounts []v1.VolumeMount) string {
-	for _, volumeMount := range volumeMounts {
-		if strings.Contains(volumeMount.Name, "pgid") {
-			pgidVolumeMount := volumeMount.MountPath
-			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "~", os.Getenv("HOME"))
-			pgidVolumeMount = strings.ReplaceAll(pgidVolumeMount, "$HOME", os.Getenv("HOME"))
-			return pgidVolumeMount
-		}
-	}
-	return ""
 }
 
 // readPgidFromFile reads a pgid from a file.
