@@ -121,8 +121,6 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 	}
 	log.G(ctx).WithField("scripts", scripts).Info("found scripts")
 }
-
-// run container in parallel
 func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
 	p.collectScripts(ctx, pod, vol)
 
@@ -132,63 +130,50 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	time_start := metav1.NewTime(time.Now())
 
 	for _, c := range pod.Spec.Containers {
-		var (
-			pgid int = 0
-			err  error
-		)
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
 			log.G(ctx).WithField("container", c.Name).Info("Starting container")
 
-			// define command to run the bash script based on c.Command of list of strings
 			var command = c.Command
 			if len(command) == 0 {
 				log.G(ctx).WithField("container", c.Name).Errorf("No command found for container")
-				err = fmt.Errorf("no command found for container: %s", c.Name)
-				errChan <- err
+				errChan <- fmt.Errorf("no command found for container: %s", c.Name)
 				return
 			}
 
 			var args string
 			if len(c.Args) == 0 {
 				log.G(ctx).Errorf("no args found for container %s", c.Name)
-				err = fmt.Errorf("no args found for container %s", c.Name)
-				errChan <- err
+				errChan <- fmt.Errorf("no args found for container %s", c.Name)
 				return
 			} else {
 				args = strings.Join(c.Args, " ")
 			}
 
-			env := c.Env // what is the type of c.Env? []v1.EnvVar
-			// if env contains fifo = true, write the command to the fifo
+			env := c.Env
+			args = strings.ReplaceAll(args, "~", home_dir)
+			args = strings.ReplaceAll(args, "$HOME", home_dir)
 
-			// search the env for fifo = true
-			runWithFifo := false
-			for _, e := range env {
-				if e.Name == "fifo" && e.Value == "true" {
-					log.G(ctx).WithField("container", c.Name).Info("fifo env found for container")
-					runWithFifo = true
-					break
-				}
-			}
+			pgid, containerState, err := runScript(ctx, command, args, env)
 
-			if runWithFifo {
-				log.G(ctx).WithField("container", c.Name).Info("fifo env found for container")
-				err = writeCmdToFifo(ctx, command, args, env)
-			} else {
-				log.G(ctx).WithField("container", c.Name).Info("fifo env not found for container")
-				args = strings.ReplaceAll(args, "~", home_dir)
-				args = strings.ReplaceAll(args, "$HOME", home_dir)
-
-				pgid, err = runScript(ctx, command, args, env)
-			}
-
-			// print pod.status.containerStatuses
 			if err != nil {
-				// report error to errChan
 				errChan <- err
-				// report container status to container_status
+				cstatusChan <- v1.ContainerStatus{
+					Name:         c.Name,
+					Image:        c.Image,
+					Ready:        false,
+					RestartCount: 0,
+					State:        *containerState,
+				}
+				return
+			}
+
+			pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, c.Name))
+			log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile")
+			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
+			if err != nil {
+				errChan <- err
 				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
@@ -196,7 +181,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 					RestartCount: 0,
 					State: v1.ContainerState{
 						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("failed to run cmd %s, arg %s; error: %v", command, args, err),
+							Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
 							FinishedAt: metav1.NewTime(time.Now()),
 							Reason:     string(v1.PodFailed),
 							StartedAt:  time_start,
@@ -205,52 +190,22 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				}
 				return
 			}
-
-			// write the leader pid to the leader_pid file
-			// name leader_pid file as container name + .leader_pid
-			if !runWithFifo {
-				pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, c.Name))
-				log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile")
-				err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
-				if err != nil {
-					// report error to errChan
-					errChan <- err
-					// report container status to container_status
-					cstatusChan <- v1.ContainerStatus{
-						Name:         c.Name,
-						Image:        c.Image,
-						Ready:        false,
-						RestartCount: 0,
-						State: v1.ContainerState{
-							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
-								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     string(v1.PodFailed),
-								StartedAt:  time_start,
-							},
-						},
-					}
-					return
-				}
-				log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile written")
-			
-				// report container status to container_status
-				cstatusChan <- v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Waiting: &v1.ContainerStateWaiting{
-							Message:    fmt.Sprintf("container %s is waiting for the command to finish", c.Name),
-							Reason:     "ContainerCreating",
-						},
+			log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile written")
+		
+			cstatusChan <- v1.ContainerStatus{
+				Name:         c.Name,
+				Image:        c.Image,
+				Ready:        false,
+				RestartCount: 0,
+				State: v1.ContainerState{
+					Waiting: &v1.ContainerStateWaiting{
+						Message:    fmt.Sprintf("container %s is waiting for the command to finish", c.Name),
+						Reason:     "ContainerCreating",
 					},
-				}
+				},
 			}
 		}(c)
 	}
-
 
 	go func() {
 		defer func() {
@@ -269,22 +224,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	}()
 
 	return errChan, cstatusChan
-
-	// // update container status based on the output of the goroutines above
-	// for err := range errChan {
-	// 	if err != nil {
-	// 		log.G(ctx).WithField("container", c.Name).Errorf("error: %v", err)
-	// 		// update the container status to failed
-	// 	}
-	// }
-
-	// for cstatus := range cstatusChan {
-	// 	pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, cstatus)
-	// 	log.G(ctx).WithField("container", c.Name).Infof("container status: %v", cstatus)
-	// }
 }
 
-func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, error) {
+func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, *v1.ContainerState, error) {
 	cmd := exec.Command("bash")
 
 	// Create a map of environment variables
@@ -315,16 +257,33 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
-		return 0, err
+		// Return a terminated container state with the exit code
+		log.G(ctx).WithField("command", cmdString).Errorf("failed to start command; error: %v", err)
+		return 0, &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				ExitCode:   1,
+				Reason:     "Error",
+				Message:    err.Error(),
+				FinishedAt: metav1.Now(),
+			},
+		}, err
 	}
 
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		return 0, err
+		// Return a terminated container state with the exit code
+		return 0, &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				ExitCode:   1,
+				Reason:     "Error",
+				Message:    err.Error(),
+				FinishedAt: metav1.Now(),
+			},
+		}, err
 	}
 
-	return pgid, nil
+	return pgid, nil, nil
 }
 
 
