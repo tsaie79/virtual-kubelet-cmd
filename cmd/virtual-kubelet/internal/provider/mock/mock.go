@@ -196,30 +196,19 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// Process pod volumes
 	volumes, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
-		log.G(ctx).Infof("Failed to process Pod volumes: %v", err)
+		log.G(ctx).WithField("err", err).Error("Failed to process volumes")
+		return err
 	}
 
-	// Set initial container status to waiting
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		containerStatus.State.Waiting = &v1.ContainerStateWaiting{
-			Reason:  "Waiting",
-			Message: "Waiting for the container to be created",
-		}
-	}
-
-
-	// create a dir to store the pgid of each container at $HOME/.pgid
-	// if the dir already exists, then skip it
-	// if the dir does not exist, then create it
-	// allow only user to read and write the dir
-	pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
-	if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
-		err := os.Mkdir(pgidDir, 0700)
-		if err != nil {
-			log.G(ctx).Infof("Failed to create pgid dir: %v", err)
+    // Create a dir to store the pgid of each container at $HOME/.pgid
+    pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
+    if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
+        err := os.Mkdir(pgidDir, 0700)
+        if err != nil {
+            log.G(ctx).WithField("err", err).Error("Failed to create pgid dir")
 			return err
-		}
-	}
+        }
+    }
 
 	// Run scripts in parallel and collect container statuses and errors
 	errChan, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
@@ -227,7 +216,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
 	for err := range errChan {
-		log.G(ctx).Errorf("Error running script: %v", err)
+		return err
 	}
 
 	// Check if any container failed
@@ -307,26 +296,22 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
 	return nil
 }
 
-// define deletePod
-func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) (err error) {
+// deletePod deletes a pod by killing its running processes and updating its status.
+func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 	ctx, span := trace.StartSpan(ctx, "DeletePod")
 	defer span.End()
 
-	// check the status of containers in the pod, if the container is running, then kill the process by looking up the pgid and os kill command the pids in the pgid
-	// if the container is terminated, then skip it
-	// if the container is waiting, then skip it
+	now := metav1.Now()
 
 	// Iterate over each container status in the pod
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-
 		// Get the process group ID (pgid) from the container ID
 		pgid := containerStatus.ContainerID
 
 		// Get the list of process IDs (pids)
 		pids, err := process.Pids()
 		if err != nil {
-			log.G(ctx).WithField("pgid", pgid).WithError(err).Error("Failed to get pids")
-			continue
+			return fmt.Errorf("failed to get pids: %w", err)
 		}
 
 		// Iterate over each process ID
@@ -334,15 +319,13 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) (err error) {
 			// Create a new process instance
 			proc, err := process.NewProcess(pid)
 			if err != nil {
-				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get process")
-				continue
+				return fmt.Errorf("failed to get process: %w", err)
 			}
 
 			// Get the process group ID (pgid) of the process
 			pgidInt, err := syscall.Getpgid(int(pid))
 			if err != nil {
-				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get pgid")
-				continue
+				return fmt.Errorf("failed to get pgid: %w", err)
 			}
 
 			// Skip if the process group ID doesn't match
@@ -353,26 +336,18 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) (err error) {
 			// Kill the process
 			err = proc.Kill()
 			if err != nil {
-				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to kill process")
-				continue
+				return fmt.Errorf("failed to kill process: %w", err)
 			}
-
-			log.G(ctx).WithField("pid", pid).Info("Killed process")
 		}
 
 		// Delete the pgid file
 		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
 		err = os.Remove(pgidFile)
 		if err != nil {
-			log.G(ctx).WithField("pgidFile", pgidFile).WithError(err).Error("Failed to delete pgid file")
-			continue
+			return fmt.Errorf("failed to delete pgid file: %w", err)
 		}
-		log.G(ctx).WithField("pgidFile", pgidFile).Info("Deleted pgid file")
-	}
 
-	// update the container status
-	now := metav1.Now()
-	for _, containerStatus := range pod.Status.ContainerStatuses {
+		// Update the container status
 		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
 			ExitCode:   1,
 			FinishedAt: now,
