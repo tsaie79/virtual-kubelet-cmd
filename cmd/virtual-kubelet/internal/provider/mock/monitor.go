@@ -332,6 +332,56 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 }
 
 
+// createPodStatusFromContainerStatus creates the pod status from the container status.
+func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
+	var containerStatuses []v1.ContainerStatus
+	// Get the previous status of the containers in the pod and previous start time and finish time of the containers in the pod
+	containerStartTime := make(map[string]metav1.Time)
+	containerFinishTime := make(map[string]metav1.Time)
+	prevContainerStateStrings := make(map[string]string)
+
+
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Running != nil {
+			prevContainerStateStrings[containerStatus.Name] = "Running"
+			containerStartTime[containerStatus.Name] = containerStatus.State.Running.StartedAt
+			containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+			log.G(context.Background()).WithField("container", containerStatus.Name).Infof("current state: %v\n", "Running")
+		} else if containerStatus.State.Terminated != nil {
+			prevContainerStateStrings[containerStatus.Name] = "Terminated"
+			containerStartTime[containerStatus.Name] = containerStatus.State.Terminated.StartedAt
+			containerFinishTime[containerStatus.Name] = containerStatus.State.Terminated.FinishedAt
+			log.G(context.Background()).WithField("container", containerStatus.Name).Infof("current state: %v\n", "Terminated")
+		} else {
+			prevContainerStateStrings[containerStatus.Name] = "Waiting"
+			containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
+			containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
+			log.G(context.Background()).WithField("container", containerStatus.Name).Infof("current state: %v\n", "Waiting")
+		} 
+	}
+
+
+	// Create a container status for each container in the pod
+	for _, container := range pod.Spec.Containers {
+		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+		containerStatus := createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile)
+		containerStatuses = append(containerStatuses, *containerStatus)
+	}
+	
+	// Update the pod status
+	pod.Status = v1.PodStatus{
+		Phase:             v1.PodRunning,
+		ContainerStatuses: containerStatuses,
+	}
+
+	// If all the containers in the pod are in the "Zombie" state, then the pod is completed
+	if allContainersAreZombies(pod) {
+		pod.Status.Phase = v1.PodSucceeded
+	}
+
+	return pod
+}
+
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
 func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, containerStartTime map[string]metav1.Time, containerFinishTime map[string]metav1.Time, pgidFile string) *v1.ContainerStatus {
@@ -355,95 +405,9 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 		return nil
 	}
 
-	log.G(context.Background()).WithField("container", c.Name).Infof("Previous state: %v\n", prevContainerState[c.Name])
 	// Determine the container status 
 	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name])
 	return containerStatus
-}
-
-// createPodStatusFromContainerStatus creates the pod status from the container status.
-func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod, prevContainerStateStrings map[string]string) *v1.Pod {
-	var containerStatuses []v1.ContainerStatus
-	// Get the previous status of the containers in the pod and previous start time and finish time of the containers in the pod
-	containerStartTime := make(map[string]metav1.Time)
-	containerFinishTime := make(map[string]metav1.Time)
-
-
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		log.G(context.Background()).WithField("container", containerStatus.Name).Infof("Container status: %v\n", containerStatus)
-		prevContainerStateString := prevContainerStateStrings[containerStatus.Name]
-		switch prevContainerStateString {
-		case "Running":
-			if containerStatus.State.Running != nil {
-				containerStartTime[containerStatus.Name] = containerStatus.State.Running.StartedAt
-				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Running)
-			}else if containerStatus.State.Terminated != nil {
-				containerStartTime[containerStatus.Name] = containerStatus.State.Terminated.StartedAt
-				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Terminated)
-
-			}
-		case "Waiting":
-			if containerStatus.State.Waiting != nil {
-				containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Waiting)
-
-			}else if containerStatus.State.Running != nil {
-				containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
-				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Running)
-
-			}
-		case "Terminated":
-			if containerStatus.State.Terminated != nil {
-				containerStartTime[containerStatus.Name] = containerStatus.State.Terminated.StartedAt
-				containerFinishTime[containerStatus.Name] = containerStatus.State.Terminated.FinishedAt
-				log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State.Terminated)
-
-			}
-		default:
-			containerStartTime[containerStatus.Name] = metav1.NewTime(time.Now())
-			containerFinishTime[containerStatus.Name] = metav1.NewTime(time.Now())
-			log.G(context.Background()).WithField("container", containerStatus.Name).Infof("prev state: %v, current state: %v\n", prevContainerStateString, containerStatus.State)
-
-		}
-	}
-
-
-	// Create a container status for each container in the pod
-	for _, container := range pod.Spec.Containers {
-		log.G(context.Background()).WithField("container", container.Name).Infof("prevContainerState: %v\n", prevContainerStateStrings)
-		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
-		// log.G(context.Background()).WithField("container", container.Name).Infof("prevcntainerstate: %v\n", prevContainerState[container.Name])
-		containerStatus := createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile)
-		containerStatuses = append(containerStatuses, *containerStatus)
-	}
-	
-	// Update the pod status
-	pod.Status = v1.PodStatus{
-		Phase:             v1.PodRunning,
-		ContainerStatuses: containerStatuses,
-	}
-
-	// If all the containers in the pod are in the "Zombie" state, then the pod is completed
-	if allContainersAreZombies(pod) {
-		pod.Status.Phase = v1.PodSucceeded
-	}
-
-	return pod
-}
-
-// getPodFinishTime gets the finish time of the pod.
-func getPodFinishTime(pod *v1.Pod) time.Time {
-	var finishTime time.Time
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Terminated != nil {
-			finishTime = containerStatus.State.Terminated.FinishedAt.Time
-		}
-	}
-	return finishTime
 }
 
 // allContainersAreZombies checks if all the containers in the pod are in the "Zombie" state.
@@ -495,8 +459,8 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentContainerState string
+	ctx := context.Background()
 
-	log.G(context.Background()).WithField("container", c.Name).Infof("Previous state: %v\n", prevContainerStateString)
 	var allZ = true
 	for _, status := range processStatus {
 		if status != "Z" {
@@ -511,50 +475,25 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 		currentContainerState = "Running"
 	}
 
-	log.G(context.Background()).WithField("container", c.Name).Infof("Current state: %v\n", currentContainerState)
 
-	switch prevContainerStateString {
-	case "Waiting":
-		if currentContainerState == "Running" {
-			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Waiting to Running\n")
-			containerState = &v1.ContainerState{
-				Running: &v1.ContainerStateRunning{
-					StartedAt: metav1.NewTime(containerStartTime),
-				},
-			}
+	// Log the transition
+	log.G(ctx).WithField("container", c.Name).Infof("Transitioning from %s to %s\n", prevContainerStateString, currentContainerState)
+
+	if currentContainerState == "Running" {
+		containerState = &v1.ContainerState{
+			Running: &v1.ContainerStateRunning{
+				StartedAt: metav1.NewTime(containerStartTime),
+			},
 		}
-	case "Running":
-		if currentContainerState == "Running" {
-			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Running to Running\n")
-			containerState = &v1.ContainerState{
-				Running: &v1.ContainerStateRunning{
-					StartedAt: metav1.NewTime(containerStartTime),
-				},
-			}
-		} else if currentContainerState == "Terminated" {
-			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Running to Terminated\n")
-			containerState = &v1.ContainerState{
-				Terminated: &v1.ContainerStateTerminated{
-					StartedAt:  metav1.NewTime(containerStartTime),
-					FinishedAt: metav1.NewTime(containerFinishTime),
-					ExitCode:   0,
-					Reason:     "Completed",
-					Message:    "Remaining processes are zombies",
-				},
-			}
-		}
-	case "Terminated":
-		if currentContainerState == "Terminated" {
-			log.G(context.Background()).WithField("container", c.Name).Infof("Transitioning from Terminated to Terminated\n")
-			containerState = &v1.ContainerState{
-				Terminated: &v1.ContainerStateTerminated{
-					StartedAt:  metav1.NewTime(containerStartTime),
-					FinishedAt: metav1.NewTime(containerFinishTime),
-					ExitCode:   0,
-					Reason:     "Completed",
-					Message:    "Remaining processes are zombies",
-				},
-			}
+	} else if currentContainerState == "Terminated" {
+		containerState = &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				StartedAt:  metav1.NewTime(containerStartTime),
+				FinishedAt: metav1.NewTime(containerFinishTime),
+				ExitCode:   0,
+				Reason:     "Completed",
+				Message:    "Remaining processes are zombies",
+			},
 		}
 	}
 
@@ -565,10 +504,15 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 // createContainerStatus creates a container status.
 func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int) *v1.ContainerStatus {
 	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
+	ready := false
+	if containerState.Running != nil {
+		ready = true
+	}
+
 	return &v1.ContainerStatus{
 		Name:         c.Name,
 		State:        *containerState,
-		Ready:        true,
+		Ready:        ready,
 		RestartCount: 0,
 		Image:        c.Image,
 		ImageID:      "",
