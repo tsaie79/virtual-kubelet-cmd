@@ -285,59 +285,45 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 }
 
 func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, error) {
-	// run the script with the env variables set
-	// run the command like [command[0], command[1], ...] args
-	
-	// command = append(command, args)
-	// cmd := exec.Command(command[0], command[1:]...)d:
+	cmd := exec.Command("bash")
 
-	cmd2 := exec.Command("bash")
-
+	// Create a map of environment variables
 	envMap := make(map[string]string)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
 		envMap[pair[0]] = pair[1]
 	}
+
+	// Update the environment variables with the provided ones
 	for _, e := range env {
 		e.Value = strings.ReplaceAll(e.Value, "~", os.Getenv("HOME"))
 		e.Value = strings.ReplaceAll(e.Value, "$HOME", os.Getenv("HOME"))
-		log.G(ctx).WithField("env name", e.Name).WithField("env value", e.Value).Info("Setting environment variable")
 		envMap[e.Name] = e.Value
-		cmd2.Env = append(cmd2.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
 	}
 
+	// Expand the command and arguments
+	cmdString := strings.Join(command, " ")
 	expand := func(s string) string {
 		return envMap[s]
 	}
+	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+ " '"+ os.Expand(args, expand) + "'")
 
-	cmdString := strings.Join(command, " ")
-	cmd := os.Expand(cmdString, expand) + " '"+ os.Expand(args, expand) + "'"
-
-	log.G(ctx).WithField("Expanded command", cmd).Info("Expanded command")
-
-	cmd = strings.ReplaceAll(cmd, "~", os.Getenv("HOME"))
-	cmd = strings.ReplaceAll(cmd, "$HOME", os.Getenv("HOME"))
-
-	cmd2.Args = append(cmd2.Args, "-c", cmd)
-
-	log.G(ctx).WithField("Final command to be run", cmd2.Args).Info("Final command")
-
-	// set new process group id for the command 
-	cmd2.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Set new process group id for the command 
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	
-	err := cmd2.Start()
+	// Start the command
+	err := cmd.Start()
 	if err != nil {
-		log.G(ctx).WithField("error", err).Info("Failed to run the command")
 		return 0, err
 	}
 
-	pgid, err := syscall.Getpgid(cmd2.Process.Pid)
+	// Get the process group id
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		log.G(ctx).WithField("error", err).Info("Failed to get pgid")
 		return 0, err
 	}
 
-	log.G(ctx).WithField("pgid", pgid).Info("Successfully ran command")
 	return pgid, nil
 }
 
