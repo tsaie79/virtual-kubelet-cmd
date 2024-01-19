@@ -297,8 +297,8 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
 	delete(p.pods, key)
 
 	// Update pod status to indicate it has been deleted
-	pod.Status.Phase = v1.PodFailed
-	pod.Status.Reason = "PodDeleted"
+	pod.Status.Phase = v1.PodUnknown
+	pod.Status.Reason = "ManuallyDeleted"
 	pod.Status.Message = "Pod has been deleted"
 
 	// Notify about the pod deletion
@@ -318,66 +318,63 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) (err error) {
 
 	// Iterate over each container status in the pod
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		// Skip if the container is not running
-		if containerStatus.State.Running == nil {
+
+		// Get the process group ID (pgid) from the container ID
+		pgid := containerStatus.ContainerID
+
+		// Get the list of process IDs (pids)
+		pids, err := process.Pids()
+		if err != nil {
+			log.G(ctx).WithField("pgid", pgid).WithError(err).Error("Failed to get pids")
 			continue
 		}
 
-		// Iterate over each container in the pod spec
-		for _, specContainer := range pod.Spec.Containers {
-			// Skip if the container names don't match
-			if specContainer.Name != containerStatus.Name {
-				continue
-			}
-
-			// Get the process group ID (pgid) from the container ID
-			pgid := containerStatus.ContainerID
-
-			// Get the list of process IDs (pids)
-			pids, err := process.Pids()
+		// Iterate over each process ID
+		for _, pid := range pids {
+			// Create a new process instance
+			proc, err := process.NewProcess(pid)
 			if err != nil {
-				log.G(ctx).WithField("pgid", pgid).WithError(err).Error("Failed to get pids")
+				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get process")
 				continue
 			}
 
-			// Iterate over each process ID
-			for _, pid := range pids {
-				// Create a new process instance
-				proc, err := process.NewProcess(pid)
-				if err != nil {
-					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get process")
-					continue
-				}
-
-				// Get the process group ID (pgid) of the process
-				pgidInt, err := syscall.Getpgid(int(pid))
-				if err != nil {
-					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get pgid")
-					continue
-				}
-
-				// Skip if the process group ID doesn't match
-				if strconv.Itoa(pgidInt) != pgid {
-					continue
-				}
-
-				// Kill the process
-				err = proc.Kill()
-				if err != nil {
-					log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to kill process")
-					continue
-				}
-
-				log.G(ctx).WithField("pid", pid).Info("Killed process")
+			// Get the process group ID (pgid) of the process
+			pgidInt, err := syscall.Getpgid(int(pid))
+			if err != nil {
+				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to get pgid")
+				continue
 			}
+
+			// Skip if the process group ID doesn't match
+			if strconv.Itoa(pgidInt) != pgid {
+				continue
+			}
+
+			// Kill the process
+			err = proc.Kill()
+			if err != nil {
+				log.G(ctx).WithField("pid", pid).WithError(err).Error("Failed to kill process")
+				continue
+			}
+
+			log.G(ctx).WithField("pid", pid).Info("Killed process")
 		}
+
+		// Delete the pgid file
+		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
+		err = os.Remove(pgidFile)
+		if err != nil {
+			log.G(ctx).WithField("pgidFile", pgidFile).WithError(err).Error("Failed to delete pgid file")
+			continue
+		}
+		log.G(ctx).WithField("pgidFile", pgidFile).Info("Deleted pgid file")
 	}
 
 	// update the container status
 	now := metav1.Now()
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
-			ExitCode:   0,
+			ExitCode:   1,
 			FinishedAt: now,
 			Reason:     "PodDeleted",
 			Message:    "Pod is deleted",
@@ -479,24 +476,8 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 
 	// Iterate over each pod
 	for _, pod := range p.pods {
-		// Create a map to hold the previous status of each container
-		prevContainerStateStrings := make(map[string]string)
-
-		// Iterate over each container status in the pod
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			// Determine the previous status of the container``
-			if containerStatus.State.Running != nil {
-				prevContainerStateStrings[containerStatus.Name] = "Running"
-			} else if containerStatus.State.Terminated != nil {
-				prevContainerStateStrings[containerStatus.Name] = "Terminated"
-			} else if containerStatus.State.Waiting != nil {
-				prevContainerStateStrings[containerStatus.Name] = "Waiting"
-			}
-		}
-		log.G(ctx).Infof("prevContainerStateStrings: %v", prevContainerStateStrings)
-
 		// Create a new pod spec with the previous status and append it to the list
-		pods = append(pods, p.createPodStatusFromContainerStatus(pod, prevContainerStateStrings))
+		pods = append(pods, p.createPodStatusFromContainerStatus(pod))
 	}
 
 	return pods, nil
