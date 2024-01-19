@@ -450,7 +450,7 @@ func getPodFinishTime(pod *v1.Pod) time.Time {
 func allContainersAreZombies(pod *v1.Pod) bool {
 	zombieCounter := 0
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Message == "status: Z" {
+		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason == "Completed" && strings.Contains(containerStatus.State.Terminated.Message, "Remaining processes are zombies") {
 			zombieCounter++
 		}
 	}
@@ -510,6 +510,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 	}else{
 		currentContainerState = "Running"
 	}
+
 	log.G(context.Background()).WithField("container", c.Name).Infof("Current state: %v\n", currentContainerState)
 
 	switch prevContainerStateString {
@@ -537,8 +538,8 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 					StartedAt:  metav1.NewTime(containerStartTime),
 					FinishedAt: metav1.NewTime(containerFinishTime),
 					ExitCode:   0,
-					Reason:     fmt.Sprintf("Status: %s", strings.Join(processStatus, ",")),
-					Message:    fmt.Sprintf("Container %s completed successfully", c.Name),
+					Reason:     "Completed",
+					Message:    "Remaining processes are zombies",
 				},
 			}
 		}
@@ -550,8 +551,8 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 					StartedAt:  metav1.NewTime(containerStartTime),
 					FinishedAt: metav1.NewTime(containerFinishTime),
 					ExitCode:   0,
-					Reason:     fmt.Sprintf("Status: %s", strings.Join(processStatus, ",")),
-					Message:    fmt.Sprintf("Container %s completed successfully", c.Name),
+					Reason:     "Completed",
+					Message:    "Remaining processes are zombies",
 				},
 			}
 		}
