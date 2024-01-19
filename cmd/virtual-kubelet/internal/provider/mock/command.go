@@ -232,9 +232,25 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 					}
 					return
 				}
+				log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile written")
+			
+				// report container status to container_status
+				cstatusChan <- v1.ContainerStatus{
+					Name:         c.Name,
+					Image:        c.Image,
+					Ready:        false,
+					RestartCount: 0,
+					State: v1.ContainerState{
+						Waiting: &v1.ContainerStateWaiting{
+							Message:    fmt.Sprintf("container %s is waiting for the command to finish", c.Name),
+							Reason:     "ContainerCreating",
+						},
+					},
+				}
 			}
 		}(c)
 	}
+
 
 	go func() {
 		defer func() {
