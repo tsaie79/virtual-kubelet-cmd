@@ -16,129 +16,97 @@ import (
 	"syscall"
 )
 
-
-var home_dir = os.Getenv("HOME")
-
-func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) (scriptMap map[string]map[string]string) {
-	time_start := metav1.NewTime(time.Now())
+func newCollectScripts(ctx context.Context, c *v1.Container, podName string, vol map[string]string) (map[string]string, *v1.ContainerState, error) {
+	timeStart := metav1.NewTime(time.Now())
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
-	scriptMap = make(map[string]map[string]string)
-	for _, c := range pod.Spec.Containers {
-		log.G(ctx).WithField("container", c.Name).Info("container")
+	var (
+		scriptMap = make(map[string]string)
+		containerState *v1.ContainerState
+	)
 
-		scriptMap[c.Name] = make(map[string]string)
-		for _, volMount := range c.VolumeMounts {
-			workdir := vol[volMount.Name]
-			mountdir := path.Join(os.Getenv("HOME"), pod.Name, "containers", volMount.MountPath)
-			// // if mountdir has ~, replace it with home_dir
-			// mountdir = strings.ReplaceAll(mountdir, "~", home_dir)
-			// mountdir = strings.ReplaceAll(mountdir, "$HOME", home_dir)
+	for _, volMount := range c.VolumeMounts {
+		defaultVolumeDir := vol[volMount.Name]
+		mountDir := path.Join(os.Getenv("HOME"), podName, "containers", volMount.MountPath)
+		log.G(ctx).WithField("volume name", volMount.Name).WithField("mount directory", mountDir).Info("volumeMount")
 
-			log.G(ctx).WithField("volume_mount", volMount.Name).WithField("mount_directory", mountdir).Info("volumeMount")
+		// run the command in the workdir
+		//scan the workdir for bash scripts
+		files, err := ioutil.ReadDir(defaultVolumeDir)
+		if err != nil {
+			log.G(ctx).WithField("default volume directory", defaultVolumeDir).Errorf("failed to read default volume directory; error: %v", err)
+			
+			containerState = &v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{
+					Message:    fmt.Sprintf("failed to read default volume directory %s; error: %v", defaultVolumeDir, err),
+					FinishedAt: metav1.NewTime(time.Now()),
+					Reason:     "ContainerCreatingError",
+					StartedAt:  timeStart,
+				},
+			}
+			return nil, containerState, err
+		}
 
-			// if the volume mount is not found in the volume map, return error
-			if workdir == "" {
-				log.G(ctx).WithField("volume_mount", volMount.Name).Info("volumeMount not found in the volume map")
+		for _, f := range files {
+			log.G(ctx).WithField("File name", f.Name()).Info("File in default volume directory")
 
-				// update the container status to failed
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    "volume mount not found in the volume map",
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     string(v1.PodFailed),
-							StartedAt:  time_start,
-						},
-					},
-				})
+			// if f.Name() contains crt, key, or pem, skip it
+			if strings.Contains(f.Name(), "crt") || strings.Contains(f.Name(), "key") || strings.Contains(f.Name(), "pem") {
+				log.G(ctx).WithField("file_name", f.Name()).Info("file name contains crt, key, or pem, skip it")
 				continue
 			}
 
-			// run the command in the workdir
-			//scan the workdir for bash scripts
-			files, err := ioutil.ReadDir(workdir)
+			// move f to the volume mount directory
+			err := copyFile(ctx, defaultVolumeDir, mountDir, f.Name())
 			if err != nil {
-				log.G(ctx).WithField("workdir", workdir).Errorf("failed to read workdir; error: %v", err)
+				log.G(ctx).WithField("File name", f.Name()).Errorf("failed to copy file; error: %v", err)
 
-				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					Ready:        false,
-					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("failed to read workdir %s; error: %v", workdir, err),
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     string(v1.PodFailed),
-							StartedAt:  time_start,
-						},
+				containerState = &v1.ContainerState{
+					Terminated: &v1.ContainerStateTerminated{
+						Message:    fmt.Sprintf("failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDir, f.Name()), path.Join(mountDir, f.Name()), err),
+						FinishedAt: metav1.NewTime(time.Now()),
+						Reason:     "ContainerCreatingError",
+						StartedAt:  timeStart,
 					},
-				})
-				continue
-			}
-
-			for _, f := range files {
-				log.G(ctx).WithField("file_name", f.Name()).Info("file name")
-
-				// if f.Name() contains crt, key, or pem, skip it
-				if strings.Contains(f.Name(), "crt") || strings.Contains(f.Name(), "key") || strings.Contains(f.Name(), "pem") {
-					log.G(ctx).WithField("file_name", f.Name()).Info("file name contains crt, key, or pem, skip it")
-					continue
 				}
-
-				// move f to the volume mount directory
-				err := copyFile(ctx, workdir, mountdir, f.Name())
-				if err != nil {
-					log.G(ctx).WithField("file_name", f.Name()).Errorf("failed to copy file; error: %v", err)
-
-					pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
-						Name:         c.Name,
-						Image:        c.Image,
-						Ready:        false,
-						RestartCount: 0,
-						State: v1.ContainerState{
-							Terminated: &v1.ContainerStateTerminated{
-								Message:    fmt.Sprintf("failed to copy file %s to %s; error: %v", path.Join(workdir, f.Name()), path.Join(mountdir, f.Name()), err),
-								FinishedAt: metav1.NewTime(time.Now()),
-								Reason:     string(v1.PodFailed),
-								StartedAt:  time_start,
-							},
-						},
-					})
-					continue
-				}
-				scriptPath := path.Join(mountdir, f.Name())
-				scriptMap[c.Name][volMount.Name] = scriptPath
+				return nil, containerState, err
 			}
+			scriptPath := path.Join(mountDir, f.Name())
+			scriptMap[volMount.Name] = scriptPath
 		}
 	}
-	return 
+	return scriptMap, nil, nil
 }
 
+	
 func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
-	scriptMap := p.collectScripts(ctx, pod, vol)
-	fmt.Println(scriptMap)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(pod.Spec.Containers))
 	cstatusChan := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
-	time_start := metav1.NewTime(time.Now())
+	timeStart := metav1.NewTime(time.Now())
 
 	for _, c := range pod.Spec.Containers {
-		// find the image location
-		image := c.Image
-		containerName := c.Name
-		scriptPath := scriptMap[containerName][image]
-
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
 			log.G(ctx).WithField("container", c.Name).Info("Starting container")
 
+			// get the scriptPath
+			scriptMap, containerState, err := newCollectScripts(ctx, &c, pod.Name, vol)
+			if err != nil {
+				errChan <- err
+				cstatusChan <- v1.ContainerStatus{
+					Name:         c.Name,
+					Image:        c.Image,
+					ImageID: 	"",
+					Ready:        false,
+					RestartCount: 0,
+					State:        *containerState,
+				}
+				return
+			}
+
+			scriptPath := scriptMap[c.Image]
 			var command = c.Command
 			if len(command) == 0 {
 				log.G(ctx).WithField("container", c.Name).Errorf("No command found for container")
@@ -157,8 +125,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			}
 
 			env := c.Env
-			args = strings.ReplaceAll(args, "~", home_dir)
-			args = strings.ReplaceAll(args, "$HOME", home_dir)
+			args = strings.ReplaceAll(args, "~", os.Getenv("HOME"))
+			args = strings.ReplaceAll(args, "$HOME", os.Getenv("HOME"))
 			
 			// find root of scriptPath for stdoutPath. Like /home/vscode/stress/job1/stress.sh -> /home/vscode/stress/job1
 			stdoutPath := path.Dir(scriptPath)
@@ -178,9 +146,17 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			}
 
 			pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, c.Name))
-			log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile")
+			log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
 			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
 			if err != nil {
+				containerState = &v1.ContainerState{
+					Terminated: &v1.ContainerStateTerminated{
+						Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
+						FinishedAt: metav1.NewTime(time.Now()),
+						Reason:     "ContainerCreatingError",
+						StartedAt:  timeStart,
+					},
+				}
 				errChan <- err
 				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
@@ -188,18 +164,10 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 					ImageID: 	scriptPath,
 					Ready:        false,
 					RestartCount: 0,
-					State: v1.ContainerState{
-						Terminated: &v1.ContainerStateTerminated{
-							Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
-							FinishedAt: metav1.NewTime(time.Now()),
-							Reason:     string(v1.PodFailed),
-							StartedAt:  time_start,
-						},
-					},
+					State: *containerState,
 				}
 				return
 			}
-			log.G(ctx).WithField("pgidFile", pgidFile).Info("pgidFile written")
 		
 			cstatusChan <- v1.ContainerStatus{
 				Name:         c.Name,
@@ -290,8 +258,8 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		return 0, &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				ExitCode:   1,
-				Reason:     "Error",
-				Message:    err.Error(),
+				Reason:     "ContainerCreatingError",
+				Message:    fmt.Sprintf("failed to start command; error: %v", err.Error()),
 				FinishedAt: metav1.Now(),
 			},
 		}, err
@@ -301,12 +269,13 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
+		log.G(ctx).WithField("command", cmdString).Errorf("failed to get process group id; error: %v", err)
 		// Return a terminated container state with the exit code
 		return 0, &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				ExitCode:   1,
-				Reason:     "Error",
-				Message:    err.Error(),
+				Reason:     "ContainerCreatingError",
+				Message:    fmt.Sprintf("failed to get process group id; error: %v", err),
 				FinishedAt: metav1.Now(),
 			},
 		}, err
