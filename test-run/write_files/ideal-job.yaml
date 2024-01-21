@@ -58,4 +58,4 @@ spec:
           effect: "NoSchedule"
       restartPolicy: Never
   backoffLimit: 4
-  completions: 2
+  completions: 1
