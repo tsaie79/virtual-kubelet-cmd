@@ -19,21 +19,20 @@ import (
 
 var home_dir = os.Getenv("HOME")
 
-func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) {
+func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[string]string) (scriptMap map[string]map[string]string) {
 	time_start := metav1.NewTime(time.Now())
 	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
-	scripts := make(map[string][]string)
+	scriptMap = make(map[string]map[string]string)
 	for _, c := range pod.Spec.Containers {
 		log.G(ctx).WithField("container", c.Name).Info("container")
 
-		scripts[c.Name] = []string{}
+		scriptMap[c.Name] = make(map[string]string)
 		for _, volMount := range c.VolumeMounts {
 			workdir := vol[volMount.Name]
-			mountdir := volMount.MountPath
-
-			// if mountdir has ~, replace it with home_dir
-			mountdir = strings.ReplaceAll(mountdir, "~", home_dir)
-			mountdir = strings.ReplaceAll(mountdir, "$HOME", home_dir)
+			mountdir := path.Join(os.Getenv("HOME"), pod.Name, "containers", volMount.MountPath)
+			// // if mountdir has ~, replace it with home_dir
+			// mountdir = strings.ReplaceAll(mountdir, "~", home_dir)
+			// mountdir = strings.ReplaceAll(mountdir, "$HOME", home_dir)
 
 			log.G(ctx).WithField("volume_mount", volMount.Name).WithField("mount_directory", mountdir).Info("volumeMount")
 
@@ -112,16 +111,17 @@ func (p *MockProvider) collectScripts(ctx context.Context, pod *v1.Pod, vol map[
 					})
 					continue
 				}
-
-				script := path.Join(mountdir, f.Name())
-				scripts[c.Name] = append(scripts[c.Name], script)
+				scriptPath := path.Join(mountdir, f.Name())
+				scriptMap[c.Name][volMount.Name] = scriptPath
 			}
 		}
 	}
-	log.G(ctx).WithField("scripts", scripts).Info("found scripts")
+	return 
 }
+
 func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
-	p.collectScripts(ctx, pod, vol)
+	scriptMap := p.collectScripts(ctx, pod, vol)
+	fmt.Println(scriptMap)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(pod.Spec.Containers))
@@ -129,6 +129,11 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	time_start := metav1.NewTime(time.Now())
 
 	for _, c := range pod.Spec.Containers {
+		// find the image location
+		image := c.Image
+		containerName := c.Name
+		scriptPath := scriptMap[containerName][image]
+
 		wg.Add(1)
 		go func(c v1.Container) {
 			defer wg.Done()
@@ -139,28 +144,32 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				log.G(ctx).WithField("container", c.Name).Errorf("No command found for container")
 				errChan <- fmt.Errorf("no command found for container: %s", c.Name)
 				return
+			}else {
+				// combine the command and scriptPath
+				command = append(command, scriptPath)
 			}
 
 			var args string
-			if len(c.Args) == 0 {
-				log.G(ctx).Errorf("no args found for container %s", c.Name)
-				errChan <- fmt.Errorf("no args found for container %s", c.Name)
-				return
-			} else {
+			if len(c.Args) > 0 {
 				args = strings.Join(c.Args, " ")
+			}else{
+				args = ""
 			}
 
 			env := c.Env
 			args = strings.ReplaceAll(args, "~", home_dir)
 			args = strings.ReplaceAll(args, "$HOME", home_dir)
-
-			pgid, containerState, err := runScript(ctx, command, args, env)
+			
+			// find root of scriptPath for stdoutPath. Like /home/vscode/stress/job1/stress.sh -> /home/vscode/stress/job1
+			stdoutPath := path.Dir(scriptPath)
+			pgid, containerState, err := runScript(ctx, command, args, env, stdoutPath)
 
 			if err != nil {
 				errChan <- err
 				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
+					ImageID: 	scriptPath,
 					Ready:        false,
 					RestartCount: 0,
 					State:        *containerState,
@@ -176,6 +185,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 				cstatusChan <- v1.ContainerStatus{
 					Name:         c.Name,
 					Image:        c.Image,
+					ImageID: 	scriptPath,
 					Ready:        false,
 					RestartCount: 0,
 					State: v1.ContainerState{
@@ -194,6 +204,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 			cstatusChan <- v1.ContainerStatus{
 				Name:         c.Name,
 				Image:        c.Image,
+				ImageID: 	scriptPath,
 				Ready:        false,
 				RestartCount: 0,
 				State: v1.ContainerState{
@@ -225,7 +236,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 	return errChan, cstatusChan
 }
 
-func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar) (int, *v1.ContainerState, error) {
+func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar, stdoutPath string) (int, *v1.ContainerState, error) {
 	cmd := exec.Command("bash")
 
 	// Create a map of environment variables
@@ -248,13 +259,31 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	expand := func(s string) string {
 		return envMap[s]
 	}
-	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+ " '"+ os.Expand(args, expand) + "'")
-
+	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand) + " " + os.Expand(args, expand))
+	log.G(ctx).WithField("command", cmd.Args).Info("command")
 	// Set new process group id for the command 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	
+	// Open the stdout and stderr files
+	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
+	if err != nil {
+		log.G(ctx).WithField("command", cmdString).Errorf("failed to open stdout file; error: %v", err)
+	}
+	defer stdoutFile.Close()
+
+	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
+	if err != nil {
+		log.G(ctx).WithField("command", cmdString).Errorf("failed to open stderr file; error: %v", err)
+	}
+	defer stderrFile.Close()
+
+	// Set the stdout and stderr of the command
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
+
+
 	// Start the command
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		// Return a terminated container state with the exit code
 		log.G(ctx).WithField("command", cmdString).Errorf("failed to start command; error: %v", err)
@@ -267,6 +296,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 			},
 		}, err
 	}
+
 
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
