@@ -36,6 +36,17 @@ data:
     echo $workdir
     shifter --image="jlabtsai/stress:latest" --entrypoint
 
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: test
+  namespace: default
+data:
+  test.sh: |
+    #!/bin/bash
+    echo $workdir
+
 
 ---
 
@@ -57,12 +68,12 @@ spec:
             - name: TIME
               value: "30"
             - name: workdir
-              value: "$HOME/stress/job1"
+              value: "~/stress/job1"
           volumeMounts:
-            - name: job1
+            - name: direct-stress
               mountPath: ~/stress/job1
-            - name: pgid-1
-              mountPath: ~/stress/job1/pgid
+            - name: test
+              mountPath: ~/stress/test
           resources:
             limits:
               cpu: "1"
@@ -79,22 +90,19 @@ spec:
             - name: workdir
               value: "~/stress/job2"
           volumeMounts:
-            - name: job1
+            - name: direct-stress
               mountPath: ~/stress/job2
-            - name: pgid-2
-              mountPath: ~/stress/job2/pgid
           resources:
             limits:
               cpu: "1"
               memory: 1Gi
       volumes:
-        - name: job1 
+        - name: direct-stress 
           configMap:
             name: direct-stress
-        - name: pgid-1
-          emptyDir: {}
-        - name: pgid-2
-          emptyDir: {}
+        - name: test
+          configMap:
+            name: test
       nodeSelector:
         kubernetes.io/role: agent
         kubernetes.io/hostname: vk
