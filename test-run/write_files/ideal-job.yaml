@@ -7,14 +7,14 @@ data:
   stress.sh: |
     #!/bin/bash
     echo $workdir
-    stress --timeout $1 --cpu $2 # test cpu
+    stress --timeout $1 --cpu $2 --vm 1 --vm-bytes $3 # test memory
 
 ---
 
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: test
+  name: new-test
 spec:
   template:
     spec:
@@ -22,14 +22,26 @@ spec:
         - name: job1
           image: direct-stress
           command: ["bash"]
-          args: ["4", "60"]
+          args: ["30", "1", "10G"]
           volumeMounts:
             - name: direct-stress
-              mountPath: ~/stress/job1
+              mountPath: stress/job1
           resources:
             limits:
               cpu: "1"
               memory: 1Gi
+        - name: job2
+          image: direct-stress
+          command: ["bash"]
+          args: ["20", "1", "10G"]
+          volumeMounts:
+            - name: direct-stress
+              mountPath: stress/job2
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+
       volumes:
         - name: direct-stress 
           configMap:
@@ -46,4 +58,4 @@ spec:
           effect: "NoSchedule"
       restartPolicy: Never
   backoffLimit: 4
-  completions: 1
+  completions: 2
