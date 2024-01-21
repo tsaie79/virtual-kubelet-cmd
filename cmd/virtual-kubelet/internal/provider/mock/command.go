@@ -291,14 +291,30 @@ func handleGetpgidError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1
 
 
 func copyFile(ctx context.Context, src string, dst string, filename string) error {
-	// create the destination directory if it does not exist
+	err := createDirectory(ctx, dst)
+	if err != nil {
+		return err
+	}
+
+	err = copySourceFileToDestination(ctx, src, dst, filename)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func createDirectory(ctx context.Context, dst string) error {
 	err := exec.Command("mkdir", "-p", dst).Run()
 	if err != nil {
 		log.G(ctx).WithField("directory", dst).Errorf("failed to create directory; error: %v", err)
 		return err
 	}
-	// mv the file to the destination directory
-	err = exec.Command("cp", path.Join(src, filename), path.Join(dst, filename)).Run()
+	return nil
+}
+
+func copySourceFileToDestination(ctx context.Context, src string, dst string, filename string) error {
+	err := exec.Command("cp", path.Join(src, filename), path.Join(dst, filename)).Run()
 	if err != nil {
 		log.G(ctx).WithFields(log.Fields{
 			"source":      path.Join(src, filename),
