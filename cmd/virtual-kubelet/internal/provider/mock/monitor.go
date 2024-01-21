@@ -337,12 +337,15 @@ func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
 	containerStartTime := make(map[string]metav1.Time)
 	containerFinishTime := make(map[string]metav1.Time)
 	prevContainerStateStrings := make(map[string]string)
+	ImageIDs := make(map[string]string)
 
 	for i, container := range pod.Spec.Containers {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name != container.Name {
 				continue
 			}
+			
+			ImageIDs[container.Name] = containerStatus.ImageID
 
 			if containerStatus.State.Running != nil {
 				prevContainerStateStrings[container.Name] = "Running"
@@ -359,7 +362,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
 			}
 
 			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
-			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile)
+			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile, ImageIDs)
 			break
 		}
 	}
@@ -378,7 +381,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
 
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
-func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, containerStartTime map[string]metav1.Time, containerFinishTime map[string]metav1.Time, pgidFile string) *v1.ContainerStatus {
+func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, containerStartTime map[string]metav1.Time, containerFinishTime map[string]metav1.Time, pgidFile string, ImageIDs map[string]string) *v1.ContainerStatus {
 	// Get the process group ID (pgid) from the container
 	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
@@ -400,7 +403,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	}
 
 	// Determine the container status 
-	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name])
+	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name], ImageIDs[c.Name])
 	return containerStatus
 }
 
@@ -449,7 +452,7 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 }
 
 // determineContainerStatus determines the container status.
-func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string) *v1.ContainerStatus {
+func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string, ImageID string) *v1.ContainerStatus {
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentContainerState string
@@ -491,12 +494,12 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 		}
 	}
 
-	containerStatus = createContainerStatus(c, containerState, pgid)
+	containerStatus = createContainerStatus(c, containerState, pgid, ImageID)
 	return containerStatus
 }
 
 // createContainerStatus creates a container status.
-func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int) *v1.ContainerStatus {
+func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int, ImageID string) *v1.ContainerStatus {
 	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
 	ready := false
 	if containerState.Running != nil {
@@ -509,7 +512,7 @@ func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, p
 		Ready:        ready,
 		RestartCount: 0,
 		Image:        c.Image,
-		ImageID:      "",
+		ImageID:      ImageID,
 		ContainerID:  fmt.Sprintf("%v", pgid),
 	}
 }
