@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
+func (p *MockProvider) generateNodeMetrics(ctx context.Context, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) map[string][]*dto.Metric {
 	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
@@ -32,7 +32,7 @@ func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, 
 	// Get node stats
 	userTime, systemTime, _, usedMemory, err := getNodeStats()
 	if err != nil {
-		log.G(context.Background()).Error("Error getting user, system, total CPU time, and used memory:", err)
+		log.G(ctx).Error("Error getting user, system, total CPU time, and used memory:", err)
 	} else {
 		// Update CPU and memory values
 		cpuValue = userTime + systemTime
@@ -69,7 +69,7 @@ func (p *MockProvider) generateNodeMetrics(metricsMap map[string][]*dto.Metric, 
 	return metricsMap
 }
 
-func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) (map[string][]*dto.Metric, map[string]int) {
+func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair) (map[string][]*dto.Metric, map[string]int) {
 	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
@@ -81,7 +81,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	// Get process group IDs from pod
 	pgids, pgidMap, err := getPgidsFromPod(pod)
 	if err != nil {
-		log.G(context.Background()).Error("Error getting pgids:", err)
+		log.G(ctx).Error("Error getting pgids:", err)
 		return nil, nil
 	}
 
@@ -97,7 +97,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	for _, pgid := range pgids {
 		userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 		if err != nil {
-			log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
+			log.G(ctx).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 			continue
 		}
 
@@ -138,7 +138,7 @@ func (p *MockProvider) generatePodMetrics(pod *v1.Pod, metricsMap map[string][]*
 	return metricsMap, pgidMap
 }
 
-func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair, pgidFile string) map[string][]*dto.Metric {
+func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Container, metricsMap map[string][]*dto.Metric, resourceType string, label []*dto.LabelPair, pgidFile string) map[string][]*dto.Metric {
 	const (
 		cpuMetricSuffix    = "_cpu_usage_seconds_total" // the rate of change of this metric is the cpu usage
 		memoryMetricSuffix = "_memory_working_set_bytes"
@@ -150,14 +150,14 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 	// Get process group ID from container
 	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
-		log.G(context.Background()).Error("Error getting pgid:", err)
+		log.G(ctx).Error("Error getting pgid:", err)
 		return nil
 	}
 
 	// Get process metrics
 	userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 	if err != nil {
-		log.G(context.Background()).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
+		log.G(ctx).WithField("pgid", pgid).Error("Error getting user, system CPU time, and memory usage:", err)
 		return nil
 	}
 
@@ -165,7 +165,7 @@ func (p *MockProvider) generateContainerMetrics(c *v1.Container, metricsMap map[
 	cpuValue = userTime + systemTime
 	memoryValue = rss
 
-	log.G(context.Background()).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuValue, memoryValue, memoryValue/1024/1024)
+	log.G(ctx).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuValue, memoryValue, memoryValue/1024/1024)
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -332,7 +332,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 }
 
 
-func (*MockProvider) createPodStatusFromContainerStatus(pod *v1.Pod) *v1.Pod {
+func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod *v1.Pod) *v1.Pod {
 	containerStatuses := make([]v1.ContainerStatus, len(pod.Spec.Containers))
 	containerStartTime := make(map[string]metav1.Time)
 	containerFinishTime := make(map[string]metav1.Time)
