@@ -298,63 +298,95 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
 
 // deletePod deletes a pod by killing its running processes and updating its status.
 func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
-	ctx, span := trace.StartSpan(ctx, "DeletePod")
-	defer span.End()
 
 	now := metav1.Now()
 
+	// Create a channel to receive errors
+	errCh := make(chan error, len(pod.Status.ContainerStatuses))
+
 	// Iterate over each container status in the pod
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		// Get the process group ID (pgid) from the container ID
-		pgid := containerStatus.ContainerID
+		go func(containerStatus v1.ContainerStatus) { // Launch a goroutine for each container status
+			// Get the process group ID (pgid) from the container ID
+			pgid := containerStatus.ContainerID
+			fmt.Println("ContainerName: ", containerStatus.Name, "pgid: ", pgid)
+			// Get the list of process IDs (pids)
+			pids, err := process.Pids()
+			if err != nil {
+				errCh <- fmt.Errorf("failed to get pids: %w", err)
+				return
+			}
+			fmt.Println("pids: ", pids)
+			// Iterate over each process ID
+			for _, pid := range pids {
+				// Create a new process instance 
+				proc, err := process.NewProcess(pid)
+				if err != nil {
+					// errCh <- fmt.Errorf("failed to get process: %w", err)
+					continue
+				}
 
-		// Get the list of process IDs (pids)
-		pids, err := process.Pids()
+				// Get the process group ID (pgid) of the process and allow it to fail
+				pgidInt, err := syscall.Getpgid(int(pid))
+				if err != nil {
+					errCh <- fmt.Errorf("failed to get pgid: %w", err)
+					return
+				}
+
+				// Skip if the process group ID doesn't match
+				if strconv.Itoa(pgidInt) != pgid {
+					continue
+				}
+
+				// Kill the process
+				err = proc.Kill()
+				if err != nil {
+					errCh <- fmt.Errorf("failed to kill process: %w", err)
+					return
+				}
+			}
+
+			// Delete the pgid file
+			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
+			err = os.Remove(pgidFile)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to delete pgid file: %w", err)
+				return
+			}
+
+			// Delete the volume directory
+			volumeDir := path.Join(os.Getenv("HOME"), pod.Name)
+			err = os.RemoveAll(volumeDir)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to delete volume directory: %w", err)
+				return
+			}
+
+			//
+
+			// Update the container status
+			containerStatus.State.Terminated = &v1.ContainerStateTerminated{
+				ExitCode:   1,
+				FinishedAt: now,
+				Reason:     "PodDeleted",
+				Message:    "Pod is deleted",
+			}
+
+			errCh <- nil // Send nil error when successful
+		}(containerStatus)
+	}
+
+	// Wait for all goroutines to finish and check for errors
+	for range pod.Status.ContainerStatuses {
+		err := <-errCh
 		if err != nil {
-			return fmt.Errorf("failed to get pids: %w", err)
-		}
-
-		// Iterate over each process ID
-		for _, pid := range pids {
-			// Create a new process instance
-			proc, err := process.NewProcess(pid)
-			if err != nil {
-				return fmt.Errorf("failed to get process: %w", err)
-			}
-
-			// Get the process group ID (pgid) of the process
-			pgidInt, err := syscall.Getpgid(int(pid))
-			if err != nil {
-				return fmt.Errorf("failed to get pgid: %w", err)
-			}
-
-			// Skip if the process group ID doesn't match
-			if strconv.Itoa(pgidInt) != pgid {
-				continue
-			}
-
-			// Kill the process
-			err = proc.Kill()
-			if err != nil {
-				return fmt.Errorf("failed to kill process: %w", err)
-			}
-		}
-
-		// Delete the pgid file
-		pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
-		err = os.Remove(pgidFile)
-		if err != nil {
-			return fmt.Errorf("failed to delete pgid file: %w", err)
-		}
-
-		// Update the container status
-		containerStatus.State.Terminated = &v1.ContainerStateTerminated{
-			ExitCode:   1,
-			FinishedAt: now,
-			Reason:     "PodDeleted",
-			Message:    "Pod is deleted",
+			fmt.Println("Error: ", err)
+			return err
 		}
 	}
+
+	// Close the error channel
+	close(errCh)
 
 	return nil
 }
