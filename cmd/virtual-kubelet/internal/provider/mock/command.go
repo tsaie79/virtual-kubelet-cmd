@@ -81,75 +81,51 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 	return scriptMap, nil, nil
 }
 
-	
-func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
-
+func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volumeMap map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
 	var wg sync.WaitGroup
-	errChan := make(chan error, len(pod.Spec.Containers))
-	cstatusChan := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
-	timeStart := metav1.NewTime(time.Now())
+	errorChannel := make(chan error, len(pod.Spec.Containers))
+	containerStatusChannel := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
+	startTime := metav1.NewTime(time.Now())
 
-	for _, c := range pod.Spec.Containers {
+	for _, container := range pod.Spec.Containers {
 		wg.Add(1)
-		go func(c v1.Container) {
+		go func(container v1.Container) {
 			defer wg.Done()
-			log.G(ctx).WithField("container", c.Name).Info("Starting container")
+			log.G(ctx).WithField("container", container.Name).Info("Starting container")
 
-			// get the scriptPath
-			scriptMap, containerState, err := newCollectScripts(ctx, &c, pod.Name, vol)
+			// Collect scripts for the container
+			scriptMap, containerState, err := newCollectScripts(ctx, &container, pod.Name, volumeMap)
 			if err != nil {
-				errChan <- err
-				cstatusChan <- v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					ImageID: 	"",
-					Ready:        false,
-					RestartCount: 0,
-					State:        *containerState,
-				}
+				errorChannel <- err
+				containerStatusChannel <- generateContainerStatus(container, "", false, containerState)
 				return
 			}
 
-			scriptPath := scriptMap[c.Image]
-			var command = c.Command
+			// Get the script path for the container image
+			scriptPath := scriptMap[container.Image]
+			command := container.Command
 			if len(command) == 0 {
-				log.G(ctx).WithField("container", c.Name).Errorf("No command found for container")
-				errChan <- fmt.Errorf("no command found for container: %s", c.Name)
+				log.G(ctx).WithField("container", container.Name).Errorf("No command found for container")
+				errorChannel <- fmt.Errorf("no command found for container: %s", container.Name)
 				return
-			}else {
-				// combine the command and scriptPath
-				command = append(command, scriptPath)
 			}
 
-			var args string
-			if len(c.Args) > 0 {
-				args = strings.Join(c.Args, " ")
-			}else{
-				args = ""
-			}
+			// Combine the command and scriptPath
+			command = append(command, scriptPath)
 
-			env := c.Env
-			args = strings.ReplaceAll(args, "~", os.Getenv("HOME"))
-			args = strings.ReplaceAll(args, "$HOME", os.Getenv("HOME"))
-			
-			// find root of scriptPath for stdoutPath. Like /home/vscode/stress/job1/stress.sh -> /home/vscode/stress/job1
-			stdoutPath := path.Dir(scriptPath)
-			pgid, containerState, err := runScript(ctx, command, args, env, stdoutPath)
+			// Prepare the arguments for the command
+			args := prepareArgs(container.Args)
 
+			// Run the script and get the process group ID
+			pgid, containerState, err := runScript(ctx, command, args, container.Env, path.Dir(scriptPath))
 			if err != nil {
-				errChan <- err
-				cstatusChan <- v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					ImageID: 	scriptPath,
-					Ready:        false,
-					RestartCount: 0,
-					State:        *containerState,
-				}
+				errorChannel <- err
+				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState)
 				return
 			}
 
-			pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, c.Name))
+			// Write the process group ID to a file
+			pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
 			log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
 			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
 			if err != nil {
@@ -158,35 +134,22 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 						Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
 						FinishedAt: metav1.NewTime(time.Now()),
 						Reason:     "ContainerCreatingError",
-						StartedAt:  timeStart,
+						StartedAt:  startTime,
 					},
 				}
-				errChan <- err
-				cstatusChan <- v1.ContainerStatus{
-					Name:         c.Name,
-					Image:        c.Image,
-					ImageID: 	scriptPath,
-					Ready:        false,
-					RestartCount: 0,
-					State: *containerState,
-				}
+				errorChannel <- err
+				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState)
 				return
 			}
-		
-			cstatusChan <- v1.ContainerStatus{
-				Name:         c.Name,
-				Image:        c.Image,
-				ImageID: 	scriptPath,
-				Ready:        false,
-				RestartCount: 0,
-				State: v1.ContainerState{
-					Waiting: &v1.ContainerStateWaiting{
-						Message:    fmt.Sprintf("container %s is waiting for the command to finish", c.Name),
-						Reason:     "ContainerCreating",
-					},
+
+			// Send the container status to the channel
+			containerStatusChannel <- generateContainerStatus(container, scriptPath, false, &v1.ContainerState{
+				Waiting: &v1.ContainerStateWaiting{
+					Message: fmt.Sprintf("container %s is waiting for the command to finish", container.Name),
+					Reason:  "ContainerCreating",
 				},
-			}
-		}(c)
+			})
+		}(container)
 	}
 
 	go func() {
@@ -198,14 +161,32 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, vol m
 
 		wg.Wait()
 
-		close(errChan)
-		log.G(ctx).Info("errChan closed")
+		close(errorChannel)
+		log.G(ctx).Info("errorChannel closed")
 
-		close(cstatusChan)
-		log.G(ctx).Info("cstatusChan closed")
+		close(containerStatusChannel)
+		log.G(ctx).Info("containerStatusChannel closed")
 	}()
 
-	return errChan, cstatusChan
+	return errorChannel, containerStatusChannel
+}
+
+func generateContainerStatus(container v1.Container, scriptPath string, ready bool, state *v1.ContainerState) v1.ContainerStatus {
+	return v1.ContainerStatus{
+		Name:         container.Name,
+		Image:        container.Image,
+		ImageID:      scriptPath,
+		Ready:        ready,
+		RestartCount: 0,
+		State:        *state,
+	}
+}
+
+func prepareArgs(args []string) string {
+	if len(args) > 0 {
+		return strings.Join(args, " ")
+	}
+	return ""
 }
 
 func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar, stdoutPath string) (int, *v1.ContainerState, error) {
