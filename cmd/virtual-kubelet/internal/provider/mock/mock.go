@@ -120,7 +120,7 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 	// if no config file is provided, set up a new config with default values
 	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity 
 	if providerConfig == "" {
-		fmt.Println("No provider config file is provided, using default values")
+		log.G(context.Background()).Info("No provider config file provided, using default values")
 		cpu := int64(runtime.NumCPU())
 		mem := int64(getSystemTotalMemory())
 		pods := int64(1000)
@@ -309,14 +309,12 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 		go func(containerStatus v1.ContainerStatus) { // Launch a goroutine for each container status
 			// Get the process group ID (pgid) from the container ID
 			pgid := containerStatus.ContainerID
-			fmt.Println("ContainerName: ", containerStatus.Name, "pgid: ", pgid)
 			// Get the list of process IDs (pids)
 			pids, err := process.Pids()
 			if err != nil {
 				errCh <- fmt.Errorf("failed to get pids: %w", err)
 				return
 			}
-			fmt.Println("pids: ", pids)
 			// Iterate over each process ID
 			for _, pid := range pids {
 				// Create a new process instance 
@@ -380,7 +378,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 	for range pod.Status.ContainerStatuses {
 		err := <-errCh
 		if err != nil {
-			fmt.Println("Error: ", err)
+			log.G(ctx).WithError(err).Error("Failed to delete pod")
 			return err
 		}
 	}
