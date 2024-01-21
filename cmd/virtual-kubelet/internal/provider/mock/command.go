@@ -16,64 +16,68 @@ import (
 	"syscall"
 )
 
-func newCollectScripts(ctx context.Context, c *v1.Container, podName string, vol map[string]string) (map[string]string, *v1.ContainerState, error) {
-	timeStart := metav1.NewTime(time.Now())
-	// define a map to store the bash scripts, as the key is the container name, the value is the list of bash scripts
-	var (
-		scriptMap = make(map[string]string)
-		containerState *v1.ContainerState
-	)
+func newCollectScripts(ctx context.Context, container *v1.Container, podName string, volumeMap map[string]string) (map[string]string, *v1.ContainerState, error) {
+	startTime := metav1.NewTime(time.Now())
 
-	for _, volMount := range c.VolumeMounts {
-		defaultVolumeDir := vol[volMount.Name]
-		mountDir := path.Join(os.Getenv("HOME"), podName, "containers", volMount.MountPath)
-		log.G(ctx).WithField("volume name", volMount.Name).WithField("mount directory", mountDir).Info("volumeMount")
+	// Define a map to store the bash scripts, with the container name as the key and the list of bash scripts as the value
+	scriptMap := make(map[string]string)
+	var containerState *v1.ContainerState
 
-		// run the command in the workdir
-		//scan the workdir for bash scripts
-		files, err := ioutil.ReadDir(defaultVolumeDir)
+	// Iterate over each volume mount in the container
+	for _, volumeMount := range container.VolumeMounts {
+		defaultVolumeDirectory := volumeMap[volumeMount.Name]
+		mountDirectory := path.Join(os.Getenv("HOME"), podName, "containers", volumeMount.MountPath)
+
+		log.G(ctx).WithField("volume name", volumeMount.Name).WithField("mount directory", mountDirectory).Info("Processing volumeMount")
+
+		// Scan the default volume directory for files
+		files, err := ioutil.ReadDir(defaultVolumeDirectory)
 		if err != nil {
-			log.G(ctx).WithField("default volume directory", defaultVolumeDir).Errorf("failed to read default volume directory; error: %v", err)
+			log.G(ctx).WithField("default volume directory", defaultVolumeDirectory).Errorf("Failed to read default volume directory; error: %v", err)
 			
 			containerState = &v1.ContainerState{
 				Terminated: &v1.ContainerStateTerminated{
-					Message:    fmt.Sprintf("failed to read default volume directory %s; error: %v", defaultVolumeDir, err),
+					Message:    fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err),
 					FinishedAt: metav1.NewTime(time.Now()),
 					Reason:     "ContainerCreatingError",
-					StartedAt:  timeStart,
+					StartedAt:  startTime,
 				},
 			}
 			return nil, containerState, err
 		}
 
-		for _, f := range files {
-			log.G(ctx).WithField("File name", f.Name()).Info("File in default volume directory")
+		// Iterate over each file in the default volume directory
+		for _, file := range files {
+			log.G(ctx).WithField("File name", file.Name()).Info("File in default volume directory")
 
-			// if f.Name() contains crt, key, or pem, skip it
-			if strings.Contains(f.Name(), "crt") || strings.Contains(f.Name(), "key") || strings.Contains(f.Name(), "pem") {
-				log.G(ctx).WithField("file_name", f.Name()).Info("file name contains crt, key, or pem, skip it")
+			// If the file name contains "crt", "key", or "pem", skip it
+			if strings.Contains(file.Name(), "crt") || strings.Contains(file.Name(), "key") || strings.Contains(file.Name(), "pem") {
+				log.G(ctx).WithField("file_name", file.Name()).Info("File name contains crt, key, or pem, skipping it")
 				continue
 			}
 
-			// move f to the volume mount directory
-			err := copyFile(ctx, defaultVolumeDir, mountDir, f.Name())
+			// Copy the file to the mount directory
+			err := copyFile(ctx, defaultVolumeDirectory, mountDirectory, file.Name())
 			if err != nil {
-				log.G(ctx).WithField("File name", f.Name()).Errorf("failed to copy file; error: %v", err)
+				log.G(ctx).WithField("File name", file.Name()).Errorf("Failed to copy file; error: %v", err)
 
 				containerState = &v1.ContainerState{
 					Terminated: &v1.ContainerStateTerminated{
-						Message:    fmt.Sprintf("failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDir, f.Name()), path.Join(mountDir, f.Name()), err),
+						Message:    fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err),
 						FinishedAt: metav1.NewTime(time.Now()),
 						Reason:     "ContainerCreatingError",
-						StartedAt:  timeStart,
+						StartedAt:  startTime,
 					},
 				}
 				return nil, containerState, err
 			}
-			scriptPath := path.Join(mountDir, f.Name())
-			scriptMap[volMount.Name] = scriptPath
+
+			// Add the script path to the script map
+			scriptPath := path.Join(mountDirectory, file.Name())
+			scriptMap[volumeMount.Name] = scriptPath
 		}
 	}
+
 	return scriptMap, nil, nil
 }
 
