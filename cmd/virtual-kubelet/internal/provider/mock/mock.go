@@ -482,7 +482,7 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	// Iterate over each pod
 	for _, pod := range p.pods {
 		// Create a new pod spec with the previous status and append it to the list
-		pods = append(pods, p.createPodStatusFromContainerStatus(pod))
+		pods = append(pods, p.createPodStatusFromContainerStatus(ctx, pod))
 	}
 
 	return pods, nil
@@ -727,7 +727,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
     }
 
     // Generate node metrics
-    metricsMap := p.generateNodeMetrics(nil, nodeNameLabel, nodeLabels)
+    metricsMap := p.generateNodeMetrics(ctx, nil, nodeNameLabel, nodeLabels)
 
     // Iterate over pods to generate pod and container metrics
     for _, pod := range p.pods {
@@ -737,7 +737,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
             {Name: &namespaceLabel, Value: &pod.Namespace},
         }
 
-        metricsMap, pgidMap := p.generatePodMetrics(pod, metricsMap, podNameLabel, podLabels)
+        metricsMap, pgidMap := p.generatePodMetrics(ctx, pod, metricsMap, podNameLabel, podLabels)
 
         // Iterate over containers in the pod
         for _, container := range pod.Spec.Containers {
@@ -758,7 +758,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 
             // Generate container metrics
 			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
-            metricsMap = p.generateContainerMetrics(&container, metricsMap, containerNameLabel, containerLabels, pgidFile)
+            metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
         }
     }
 
