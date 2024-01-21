@@ -190,86 +190,104 @@ func prepareArgs(args []string) string {
 }
 
 func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar, stdoutPath string) (int, *v1.ContainerState, error) {
-	cmd := exec.Command("bash")
-
 	// Create a map of environment variables
-	envMap := make(map[string]string)
-	for _, e := range os.Environ() {
-		pair := strings.SplitN(e, "=", 2)
-		envMap[pair[0]] = pair[1]
-	}
+	envMap := createEnvironmentMap()
 
 	// Update the environment variables with the provided ones
-	for _, e := range env {
-		e.Value = strings.ReplaceAll(e.Value, "~", os.Getenv("HOME"))
-		e.Value = strings.ReplaceAll(e.Value, "$HOME", os.Getenv("HOME"))
-		envMap[e.Name] = e.Value
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", e.Name, e.Value))
-	}
+	updateEnvironmentVariables(ctx, &envMap, env)
 
-	// Expand the command and arguments
-	cmdString := strings.Join(command, " ")
-	expand := func(s string) string {
-		return envMap[s]
-	}
-	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand) + " " + os.Expand(args, expand))
-	log.G(ctx).WithField("command", cmd.Args).Info("command")
+	// Prepare the command to be executed
+	cmd := prepareCommand(ctx, command, args, envMap)
+
 	// Set new process group id for the command 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	
-	// Open the stdout and stderr files
-	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
-	if err != nil {
-		log.G(ctx).WithField("command", cmdString).Errorf("failed to open stdout file; error: %v", err)
-	}
-	defer stdoutFile.Close()
-
-	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
-	if err != nil {
-		log.G(ctx).WithField("command", cmdString).Errorf("failed to open stderr file; error: %v", err)
-	}
-	defer stderrFile.Close()
 
 	// Set the stdout and stderr of the command
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
-
+	setCommandOutput(ctx, cmd, stdoutPath)
 
 	// Start the command
-	err = cmd.Start()
+	err := cmd.Start()
 	if err != nil {
-		// Return a terminated container state with the exit code
-		log.G(ctx).WithField("command", cmdString).Errorf("failed to start command; error: %v", err)
-		return 0, &v1.ContainerState{
-			Terminated: &v1.ContainerStateTerminated{
-				ExitCode:   1,
-				Reason:     "ContainerCreatingError",
-				Message:    fmt.Sprintf("failed to start command; error: %v", err.Error()),
-				FinishedAt: metav1.Now(),
-			},
-		}, err
+		return handleCommandStartError(ctx, cmd, err)
 	}
-
 
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		log.G(ctx).WithField("command", cmdString).Errorf("failed to get process group id; error: %v", err)
-		// Return a terminated container state with the exit code
-		return 0, &v1.ContainerState{
-			Terminated: &v1.ContainerStateTerminated{
-				ExitCode:   1,
-				Reason:     "ContainerCreatingError",
-				Message:    fmt.Sprintf("failed to get process group id; error: %v", err),
-				FinishedAt: metav1.Now(),
-			},
-		}, err
+		return handleGetpgidError(ctx, cmd, err)
 	}
 
 	return pgid, nil, nil
 }
 
+func createEnvironmentMap() map[string]string {
+	envMap := make(map[string]string)
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		envMap[pair[0]] = pair[1]
+	}
+	return envMap
+}
 
+func updateEnvironmentVariables(ctx context.Context, envMap *map[string]string, env []v1.EnvVar) {
+	for _, e := range env {
+		e.Value = strings.ReplaceAll(e.Value, "~", os.Getenv("HOME"))
+		e.Value = strings.ReplaceAll(e.Value, "$HOME", os.Getenv("HOME"))
+		(*envMap)[e.Name] = e.Value
+	}
+}
+
+func prepareCommand(ctx context.Context, command []string, args string, envMap map[string]string) *exec.Cmd {
+	cmd := exec.Command("bash")
+	cmdString := strings.Join(command, " ")
+	expand := func(s string) string {
+		return envMap[s]
+	}
+	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand))
+	log.G(ctx).WithField("command", cmd.Args).Info("command")
+	return cmd
+}
+
+func setCommandOutput(ctx context.Context, cmd *exec.Cmd, stdoutPath string) {
+	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
+	if err != nil {
+		log.G(ctx).WithField("command", cmd.Args).Errorf("failed to open stdout file; error: %v", err)
+	}
+	defer stdoutFile.Close()
+
+	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
+	if err != nil {
+		log.G(ctx).WithField("command", cmd.Args).Errorf("failed to open stderr file; error: %v", err)
+	}
+	defer stderrFile.Close()
+
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
+}
+
+func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
+	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to start command; error: %v", err)
+	return 0, &v1.ContainerState{
+		Terminated: &v1.ContainerStateTerminated{
+			ExitCode:   1,
+			Reason:     "ContainerCreatingError",
+			Message:    fmt.Sprintf("failed to start command; error: %v", err.Error()),
+			FinishedAt: metav1.Now(),
+		},
+	}, err
+}
+
+func handleGetpgidError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
+	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to get process group id; error: %v", err)
+	return 0, &v1.ContainerState{
+		Terminated: &v1.ContainerStateTerminated{
+			ExitCode:   1,
+			Reason:     "ContainerCreatingError",
+			Message:    fmt.Sprintf("failed to get process group id; error: %v", err),
+			FinishedAt: metav1.Now(),
+		},
+	}, err
+}
 
 
 func copyFile(ctx context.Context, src string, dst string, filename string) error {
