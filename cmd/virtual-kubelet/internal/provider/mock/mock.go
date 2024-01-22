@@ -741,6 +741,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 
         // Iterate over containers in the pod
         for _, container := range pod.Spec.Containers {
+			containerName := container.Name
             // Skip if container state is terminated
             if status := getContainerStatus(pod, container.Name); status != nil && status.State.Terminated != nil {
                 continue
@@ -752,7 +753,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
                 {Name: &nodeNameLabel, Value: &p.nodeName},
                 {Name: &namespaceLabel, Value: &pod.Namespace},
                 {Name: &podNameLabel, Value: &pod.Name},
-                {Name: &containerNameLabel, Value: &container.Name},
+                {Name: &containerNameLabel, Value: &containerName},
                 {Name: &pgidLabel, Value: &pgidLabelStr},
             }
 
