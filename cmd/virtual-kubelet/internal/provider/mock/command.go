@@ -14,6 +14,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"syscall"
+	"io"
 )
 
 func newCollectScripts(ctx context.Context, container *v1.Container, podName string, volumeMap map[string]string) (map[string]string, *v1.ContainerState, error) {
@@ -202,8 +203,9 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Set new process group id for the command 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Set the stdout and stderr of the command
-	setCommandOutput(ctx, cmd, stdoutPath)
+	// Create stdout and stderr pipes
+	stdoutIn, _ := cmd.StdoutPipe() 
+	stderrIn, _ := cmd.StderrPipe()
 
 	// Start the command
 	err := cmd.Start()
@@ -217,8 +219,59 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		return handleGetpgidError(ctx, cmd, err)
 	}
 
+
+	// write the stdout and stderr to files without waiting for the command to finish
+	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
+	if err != nil {
+		return handleCommandStartError(ctx, cmd, err)
+	}
+	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
+	if err != nil {
+		return handleCommandStartError(ctx, cmd, err)
+	}
+
+	go func() {
+		//write stdout to sdout file
+		_, _ = io.Copy(stdoutFile, stdoutIn)
+		stdoutFile.Close()
+	}()
+	
+	// Create a channel to communicate errors
+	errCh := make(chan error)
+
+	go func() {
+		_, err := io.Copy(stderrFile, stderrIn)
+		stderrFile.Close()
+
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		// Check if the stderrFile is empty
+		info, err := stderrFile.Stat()
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		if info.Size() > 0 {
+			// If the stderrFile is not empty, send an error to the channel
+			errCh <- fmt.Errorf("stderr is not empty")
+			return
+		}
+
+		// If everything is fine, send nil to the channel
+		errCh <- nil
+	}()
+
+	if err := <-errCh; err != nil {
+		return handleCommandRunError(ctx, cmd, err)
+	}
+
 	return pgid, nil, nil
 }
+
 
 func createEnvironmentMap() map[string]string {
 	envMap := make(map[string]string)
@@ -248,22 +301,19 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 	return cmd
 }
 
-func setCommandOutput(ctx context.Context, cmd *exec.Cmd, stdoutPath string) {
-	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
-	if err != nil {
-		log.G(ctx).WithField("command", cmd.Args).Errorf("failed to open stdout file; error: %v", err)
-	}
-	defer stdoutFile.Close()
 
-	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
-	if err != nil {
-		log.G(ctx).WithField("command", cmd.Args).Errorf("failed to open stderr file; error: %v", err)
-	}
-	defer stderrFile.Close()
-
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
+func handleCommandRunError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
+	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to run command; error: %v", err)
+	return 0, &v1.ContainerState{
+		Terminated: &v1.ContainerStateTerminated{
+			ExitCode:   int32(cmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus()),
+			Reason:     "ContainerCreatingError",
+			Message:    fmt.Sprintf("failed to run command; error: %v", err.Error()),
+			FinishedAt: metav1.Now(),
+		},
+	}, err
 }
+
 
 func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
 	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to start command; error: %v", err)
