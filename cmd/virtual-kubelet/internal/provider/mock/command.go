@@ -210,10 +210,10 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	stderrIn, _ := cmd.StderrPipe()
 
 	// Create a WaitGroup
-	var wg sync.WaitGroup
+	// var wg sync.WaitGroup
 
 	// Increment the WaitGroup counter
-	wg.Add(1)
+	// wg.Add(1)
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
@@ -261,8 +261,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 
 	// Watch the stderr pipe for errors, if any, return the error and the container state
 	go func() {
-		defer wg.Done()
-
+		// defer wg.Done()
 		err := cmd.Wait()
 		if err != nil {
 			pgid, state, err := handleCommandRunError(ctx, cmd, err, pgid)
@@ -273,7 +272,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	}()
 
 	// Wait for all commands to finish
-	wg.Wait()
+	// wg.Wait()
 
 	// In your main function, receive the result from the channel
 	// In your main function, receive the result from the channel
@@ -283,7 +282,6 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 			return result.Pgid, result.State, result.Err
 		}else{
 			fmt.Println("<<<<<<<<<")
-
 			return result.Pgid, nil, nil
 		}
 	case <-time.After(time.Second * 3): // adjust the timeout as needed
@@ -316,7 +314,7 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 	expand := func(s string) string {
 		return envMap[s]
 	}
-	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand))
+	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand), "; wait")
 	log.G(ctx).WithField("command", cmd.Args).Info("command")
 	return cmd
 }
