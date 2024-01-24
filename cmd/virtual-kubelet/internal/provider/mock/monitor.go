@@ -367,13 +367,34 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 		}
 	}
 
-	pod.Status = v1.PodStatus{
-		Phase:             v1.PodRunning,
-		ContainerStatuses: containerStatuses,
+	// if exit code is 1 in all containers, then pod is Failed otherwise Running
+	/// check if all containers are terminated and have exit code 1
+	allContainersTerminated := true
+	for _, containerStatus := range containerStatuses {
+		fmt.Println(">>>>>>>>>>>>>>", containerStatus.State)
+		if containerStatus.State.Terminated == nil || containerStatus.State.Terminated.ExitCode != 1 {
+			allContainersTerminated = false
+			break
+		}
 	}
 
 	if allContainersAreZombies(pod) {
+		fmt.Println("allContainersAreZombies")
 		pod.Status.Phase = v1.PodSucceeded
+	}
+
+	if allContainersTerminated {
+		pod.Status.Phase = v1.PodFailed
+	}else{
+		pod.Status.Phase = v1.PodRunning
+	}
+	fmt.Println("pod.Status.Phas", pod.Status.Phase)
+	fmt.Println("allContainersTerminated", allContainersTerminated)
+
+
+	pod.Status = v1.PodStatus{
+		Phase:             pod.Status.Phase,
+		ContainerStatuses: containerStatuses,
 	}
 
 	return pod
@@ -385,21 +406,49 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	// Get the process group ID (pgid) from the container
 	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
-		logError("Error getting pgid:", c.Name, err)
-		return nil
+		log.G(context.Background()).Error("Error getting pgid:", err)
+		containerState := &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				StartedAt:  metav1.NewTime(time.Now()),
+				FinishedAt: metav1.NewTime(time.Now()),
+				ExitCode:   1,
+				Reason:     "Error",
+				Message:    "Error getting pgid",
+			},
+		}
+		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
 	}
 
 	// Get the process IDs (pids)
 	pids, err := process.Pids()
 	if err != nil {
-		logError("Error getting pids:", c.Name, err)
-		return nil
+		log.G(context.Background()).Error("Error getting pids:", err)
+		containerState := &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				StartedAt:  metav1.NewTime(time.Now()),
+				FinishedAt: metav1.NewTime(time.Now()),
+				ExitCode:   1,
+				Reason:     "Error",
+				Message:    "Error getting pids",
+			},
+		}
+		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
 	}
 
 	// Get the process status for each pid
 	processStatus := getProcessStatus(pids, pgid, c.Name)
 	if processStatus == nil {
-		return nil
+		log.G(context.Background()).Error("Error getting process status")
+		containerState := &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				StartedAt:  metav1.NewTime(time.Now()),
+				FinishedAt: metav1.NewTime(time.Now()),
+				ExitCode:    1,
+				Reason:     "Error",
+				Message:    "Error getting process status",
+			},
+		}
+		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
 	}
 
 	// Determine the container status 
@@ -410,6 +459,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 // allContainersAreZombies checks if all the containers in the pod are in the "Zombie" state.
 func allContainersAreZombies(pod *v1.Pod) bool {
 	zombieCounter := 0
+	fmt.Println("<<<<<<<<<<<<<<<<<<<", pod.Status.ContainerStatuses)
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason == "Completed" && strings.Contains(containerStatus.State.Terminated.Message, "Remaining processes are zombies") {
 			zombieCounter++
@@ -439,6 +489,7 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 
 		if processPgid == pgid {
 			cmd, _ := p.Cmdline()
+			fmt.Println("cmd", cmd)
 			status, err := p.Status()
 			if err != nil {
 				logError("Error getting process status:", containerName, err)
