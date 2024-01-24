@@ -98,7 +98,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			scriptMap, containerState, err := newCollectScripts(ctx, &container, pod.Name, volumeMap)
 			if err != nil {
 				errorChannel <- err
-				containerStatusChannel <- generateContainerStatus(container, "", false, containerState)
+				containerStatusChannel <- generateContainerStatus(container, "", false, containerState, 0)
 				return
 			}
 
@@ -120,8 +120,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			// Run the script and get the process group ID
 			pgid, containerState, err := runScript(ctx, command, args, container.Env, path.Dir(scriptPath))
 			if err != nil {
+				fmt.Println(err)
 				errorChannel <- err
-				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState)
+				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState, pgid)
 				return
 			}
 
@@ -139,7 +140,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 					},
 				}
 				errorChannel <- err
-				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState)
+				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState, pgid)
 				return
 			}
 
@@ -149,7 +150,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 					Message: fmt.Sprintf("container %s is waiting for the command to finish", container.Name),
 					Reason:  "ContainerCreating",
 				},
-			})
+			}, pgid)
 		}(container)
 	}
 
@@ -172,7 +173,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 	return errorChannel, containerStatusChannel
 }
 
-func generateContainerStatus(container v1.Container, scriptPath string, ready bool, state *v1.ContainerState) v1.ContainerStatus {
+func generateContainerStatus(container v1.Container, scriptPath string, ready bool, state *v1.ContainerState, containerID int) v1.ContainerStatus {
 	return v1.ContainerStatus{
 		Name:         container.Name,
 		Image:        container.Image,
@@ -180,6 +181,7 @@ func generateContainerStatus(container v1.Container, scriptPath string, ready bo
 		Ready:        ready,
 		RestartCount: 0,
 		State:        *state,
+		ContainerID: fmt.Sprintf("%d", containerID),
 	}
 }
 
@@ -210,7 +212,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err)
+		return handleCommandStartError(ctx, cmd, err, 0)
 	}
 
 	// Get the process group id
@@ -223,11 +225,11 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// write the stdout and stderr to files without waiting for the command to finish
 	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err)
+		return handleCommandStartError(ctx, cmd, err, pgid)
 	}
 	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err)
+		return handleCommandStartError(ctx, cmd, err, pgid)
 	}
 
 	go func() {
@@ -236,40 +238,48 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		stdoutFile.Close()
 	}()
 	
-	// Create a channel to communicate errors
-	errCh := make(chan error)
-
 	go func() {
-		_, err := io.Copy(stderrFile, stderrIn)
+		//write a function to read stderr and write to stderr file
+		_, _ = io.Copy(stderrFile, stderrIn)
 		stderrFile.Close()
-
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		// Check if the stderrFile is empty
-		info, err := stderrFile.Stat()
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		if info.Size() > 0 {
-			// If the stderrFile is not empty, send an error to the channel
-			errCh <- fmt.Errorf("stderr is not empty")
-			return
-		}
-
-		// If everything is fine, send nil to the channel
-		errCh <- nil
 	}()
 
-	if err := <-errCh; err != nil {
-		return handleCommandRunError(ctx, cmd, err)
+	// Define a struct to hold the return values of handleCommandRunError
+	type Result struct {
+		Pgid int
+		State    *v1.ContainerState
+		Err      error
 	}
 
-	return pgid, nil, nil
+	// Create a channel to receive the result of handleCommandRunError
+	resultCh := make(chan Result)
+
+	// Watch the stderr pipe for errors, if any, return the error and the container state
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			pgid, state, err := handleCommandRunError(ctx, cmd, err, pgid)
+			resultCh <- Result{Pgid: pgid, State: state, Err: err}
+			return
+		}
+		resultCh <- Result{Pgid: pgid, State: nil, Err: nil}
+	}()
+
+	// In your main function, receive the result from the channel
+	// In your main function, receive the result from the channel
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return result.Pgid, result.State, result.Err
+		}else{
+			fmt.Println("<<<<<<<<<")
+
+			return result.Pgid, nil, nil
+		}
+	case <-time.After(time.Second * 3): // adjust the timeout as needed
+		fmt.Println("Command execution not finished after 0.5 second")
+		return pgid, nil, nil
+	}
 }
 
 
@@ -302,12 +312,12 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 }
 
 
-func handleCommandRunError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
+func handleCommandRunError(ctx context.Context, cmd *exec.Cmd, err error, pgid int) (int, *v1.ContainerState, error) {
 	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to run command; error: %v", err)
-	return 0, &v1.ContainerState{
+	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
-			ExitCode:   int32(cmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus()),
-			Reason:     "ContainerCreatingError",
+			ExitCode:   1,
+			Reason:     "handleCommandRunError",
 			Message:    fmt.Sprintf("failed to run command; error: %v", err.Error()),
 			FinishedAt: metav1.Now(),
 		},
@@ -315,12 +325,12 @@ func handleCommandRunError(ctx context.Context, cmd *exec.Cmd, err error) (int, 
 }
 
 
-func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
+func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error, pgid int) (int, *v1.ContainerState, error) {
 	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to start command; error: %v", err)
-	return 0, &v1.ContainerState{
+	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
-			Reason:     "ContainerCreatingError",
+			Reason:     "handleCommandStartError",
 			Message:    fmt.Sprintf("failed to start command; error: %v", err.Error()),
 			FinishedAt: metav1.Now(),
 		},
@@ -332,7 +342,7 @@ func handleGetpgidError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1
 	return 0, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
-			Reason:     "ContainerCreatingError",
+			Reason:     "handleGetpgidError",
 			Message:    fmt.Sprintf("failed to get process group id; error: %v", err),
 			FinishedAt: metav1.Now(),
 		},
