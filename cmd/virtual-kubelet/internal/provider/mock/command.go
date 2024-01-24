@@ -314,7 +314,7 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 	expand := func(s string) string {
 		return envMap[s]
 	}
-	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand), "; wait")
+	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand))
 	log.G(ctx).WithField("command", cmd.Args).Info("command")
 	return cmd
 }
