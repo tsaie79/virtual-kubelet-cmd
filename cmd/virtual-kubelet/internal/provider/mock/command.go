@@ -209,6 +209,11 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	stdoutIn, _ := cmd.StdoutPipe() 
 	stderrIn, _ := cmd.StderrPipe()
 
+	// Create a WaitGroup
+	var wg sync.WaitGroup
+
+	// Increment the WaitGroup counter
+	wg.Add(1)
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
@@ -256,6 +261,8 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 
 	// Watch the stderr pipe for errors, if any, return the error and the container state
 	go func() {
+		defer wg.Done()
+
 		err := cmd.Wait()
 		if err != nil {
 			pgid, state, err := handleCommandRunError(ctx, cmd, err, pgid)
@@ -264,6 +271,9 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		}
 		resultCh <- Result{Pgid: pgid, State: nil, Err: nil}
 	}()
+
+	// Wait for all commands to finish
+	wg.Wait()
 
 	// In your main function, receive the result from the channel
 	// In your main function, receive the result from the channel
