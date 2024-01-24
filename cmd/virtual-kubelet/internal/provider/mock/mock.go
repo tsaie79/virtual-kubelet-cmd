@@ -211,17 +211,20 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
     }
 
 	// Run scripts in parallel and collect container statuses and errors
-	errChan, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
+	_, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
 	for containerStatus := range containerStatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
-	for err := range errChan {
-		return err
-	}
+	// for err := range errChan {
+	// 	log.G(ctx).WithField("err", err).Error("Failed to run script")
+	// 	return err
+	// }
 
 	// Check if any container failed
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.ExitCode != 0 {
+			fmt.Println(">>>>>>>>>>>>")
+			fmt.Println(containerStatus)
 			pod.Status.Phase = v1.PodFailed
 			pod.Status.Message = string(v1.PodFailed)
 			p.notifier(pod)
@@ -482,6 +485,9 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	// Iterate over each pod
 	for _, pod := range p.pods {
 		// Create a new pod spec with the previous status and append it to the list
+		if pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded {
+			continue
+		}
 		pods = append(pods, p.createPodStatusFromContainerStatus(ctx, pod))
 	}
 
@@ -731,6 +737,11 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 
     // Iterate over pods to generate pod and container metrics
     for _, pod := range p.pods {
+		// iterate only running pods
+		if pod.Status.Phase != v1.PodRunning {
+			continue
+		}
+	
         podLabels := []*dto.LabelPair{
             {Name: &nodeNameLabel, Value: &p.nodeName},
             {Name: &podNameLabel, Value: &pod.Name},
