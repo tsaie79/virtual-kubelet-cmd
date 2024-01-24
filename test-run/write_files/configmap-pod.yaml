@@ -1,81 +1,81 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: job1
-  namespace: default
+  name: direct-stress
 data:
   stress.sh: |
     #!/bin/bash
-    # shifter --image="jlabtsai/stress:latest" --entrypoint
-    # stress --cpu $cpu --timeout $timeout
-    echo $workdir
-    docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
+    # stress --timeout $1 --cpu $2 --vm $3 --vm-bytes $4 # test memory
+    stress --timeout $1 --cpu $2 # test memory
 
 ---
+
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: docker-stress
+data:
+  stress.sh: |
+    #!/bin/bash
+    docker run -d --rm -e NUMBER=$2 -e TIME=$1 jlabtsai/stress:latest
+
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: shifter-stress
+data:
+  stress.sh: |
+    #!/bin/bash
+    export NUMBER=$2
+    export TIME=$1
+    shifter --image="jlabtsai/stress:latest" --entrypoint
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: test
+data:
+  test.sh: |
+    #!/bin/bash
+    # while true; do
+    #   date
+    #   echo "test"
+    #   sleep 3
+    # done
+    sleep 60 && date
+
+
+---
+
 
 apiVersion: v1
 kind: Pod
 metadata:
-  name: stress
+  name: new-test-pod
 spec:
   containers:
-    - name: job1
-      image: job1
-      command: ["/bin/bash", "-c"]
-      args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
-      env:
-        - name: NUMBER
-          value: "50"
-        - name: TIME
-          value: "60"
-        - name: workdir
-          value: "$HOME/stress/job1"
-
+    - name: job3
+      image: test
+      command: ["bash"]
+      args: ["30", "2"]
       volumeMounts:
-        - name: job1
-          mountPath: ~/stress/job1
-        - name: pgid-1
-          mountPath: ~/stress/job1/pgid
-
+        - name: test
+          mountPath: stress/job3
       resources:
         limits:
           cpu: "1"
           memory: 1Gi
-
-    - name: job2
-      image: job2
-      command: ["/bin/bash", "-c"]
-      args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
-      env:
-        - name: NUMBER
-          value: "1"
-        - name: TIME
-          value: "40"
-        - name: workdir
-          value: "~/stress/job2"
-
-
-      volumeMounts:
-        - name: job1
-          mountPath: ~/stress/job2
-        - name: pgid-2
-          mountPath: ~/stress/job2/pgid
-
-      resources:
-        limits:
-          cpu: "1"
-          memory: 1Gi
-
-
   volumes:
-    - name: job1 
+    - name: direct-stress 
       configMap:
-        name: job1
-    - name: pgid-1
-      emptyDir: {}
-    - name: pgid-2
-      emptyDir: {}
-        
+        name: direct-stress
+    - name: test
+      configMap:
+        name: test
   nodeSelector:
     kubernetes.io/role: agent
     kubernetes.io/hostname: vk
@@ -83,6 +83,4 @@ spec:
     - key: "virtual-kubelet.io/provider"
       value: "mock"
       effect: "NoSchedule"
-
-
----
+  restartPolicy: Never
