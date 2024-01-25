@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -368,30 +367,17 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 		}
 	}
 
-	// if exit code is 1 in all containers, then pod is Failed otherwise Running
-	/// check if all containers are terminated and have exit code 1
-	allContainersTerminated := true
-	for _, containerStatus := range containerStatuses {
-		fmt.Println(">>>>>>>>>>>>>>", containerStatus.State)
-		if containerStatus.State.Terminated == nil || containerStatus.State.Terminated.ExitCode != 1 {
-			allContainersTerminated = false
-			break
+	allZombies, stderrNotEmpty, _, _, _ := checkTerminatedContainer(pod)
+	if allZombies {
+		fmt.Println("allZombies")
+		if stderrNotEmpty {
+			pod.Status.Phase = v1.PodFailed
+		}else{
+			pod.Status.Phase = v1.PodSucceeded
 		}
-	}
-
-	if allContainersAreZombies(pod) {
-		fmt.Println("allContainersAreZombies")
-		pod.Status.Phase = v1.PodSucceeded
-	}
-
-	if allContainersTerminated {
-		pod.Status.Phase = v1.PodFailed
 	}else{
 		pod.Status.Phase = v1.PodRunning
 	}
-	fmt.Println("pod.Status.Phas", pod.Status.Phase)
-	fmt.Println("allContainersTerminated", allContainersTerminated)
-
 
 	pod.Status = v1.PodStatus{
 		Phase:             pod.Status.Phase,
@@ -456,18 +442,10 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	}
 
 	// Check if the file is empty
+	hasStderr := false
 	if info.Size() != 0 {
 		log.G(context.Background()).Error("The stderr file is not empty.")
-		containerState := &v1.ContainerState{
-			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  containerStartTime[c.Name],
-				FinishedAt: metav1.NewTime(time.Now()),
-				ExitCode:   1,
-				Reason:     "stderrNotEmpty",
-				Message:    "The stderr file is not empty",
-			},
-		}
-		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+		hasStderr = true
 	} else {
 		log.G(context.Background()).Info("The stderr file is empty.")
 	}
@@ -476,20 +454,41 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	processStatus := getProcessStatus(pids, pgid, c.Name)
 
 	// Determine the container status 
-	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name], ImageIDs[c.Name])
+	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name], ImageIDs[c.Name], hasStderr)
 	return containerStatus
 }
 
-// allContainersAreZombies checks if all the containers in the pod are in the "Zombie" state.
-func allContainersAreZombies(pod *v1.Pod) bool {
+// checkContainerStatus checks the status of all containers in the pod.
+// It returns true if all containers are in the "Zombie" state and if any container has "stderrNotEmpty" in its state.
+func checkTerminatedContainer(pod *v1.Pod) (allZombies bool, stderrNotEmpty bool, getPgidError bool, getPidsError bool, getStderrFileInfoError bool) {
 	zombieCounter := 0
-	fmt.Println("<<<<<<<<<<<<<<<<<<<", pod.Status.ContainerStatuses)
 	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason == "Completed" && strings.Contains(containerStatus.State.Terminated.Message, "Remaining processes are zombies") {
-			zombieCounter++
+		if containerStatus.State.Terminated != nil {
+			// Check if the container is in the "Zombie" state
+			if containerStatus.State.Terminated.ExitCode == 0 {
+				zombieCounter++
+				fmt.Println("zombieCounter")
+			}
+			// Check if the container has "stderrNotEmpty" in its state
+			if containerStatus.State.Terminated.Reason == "stderrNotEmpty" {
+				stderrNotEmpty = true
+			}
+			// Check if the container has "getPgidError" in its state
+			if containerStatus.State.Terminated.Reason == "getPgidError" {
+				getPgidError = true
+			}
+			// Check if the container has "getPidsError" in its state
+			if containerStatus.State.Terminated.Reason == "getPidsError" {
+				getPidsError = true
+			}
+			// Check if the container has "getStderrFileInfoError" in its state
+			if containerStatus.State.Terminated.Reason == "getStderrFileInfoError" {
+				getStderrFileInfoError = true
+			}
 		}
 	}
-	return zombieCounter == len(pod.Status.ContainerStatuses)
+	allZombies = zombieCounter == len(pod.Status.ContainerStatuses)
+	return
 }
 
 // logError logs an error message.
@@ -527,7 +526,7 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 }
 
 // determineContainerStatus determines the container status.
-func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string, ImageID string) *v1.ContainerStatus {
+func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string, ImageID string, hasStderr bool) *v1.ContainerStatus {
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentContainerState string
@@ -558,13 +557,23 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 			},
 		}
 	} else if currentContainerState == "Terminated" {
+		var reason string
+		var message string
+		if hasStderr {
+			reason = "stderrNotEmpty"
+			message = "The stderr file is not empty."
+		} else {
+			reason = "Completed"
+			message = "Remaining processes are zombies"
+		}
+
 		containerState = &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  metav1.NewTime(containerStartTime),
 				FinishedAt: metav1.NewTime(containerFinishTime),
 				ExitCode:   0,
-				Reason:     "Completed",
-				Message:    "Remaining processes are zombies",
+				Reason:	 reason,
+				Message:    message,
 			},
 		}
 	}
