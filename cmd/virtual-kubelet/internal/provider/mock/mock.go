@@ -215,16 +215,10 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	for containerStatus := range containerStatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
-	// for err := range errChan {
-	// 	log.G(ctx).WithField("err", err).Error("Failed to run script")
-	// 	return err
-	// }
 
 	// Check if any container failed
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.ExitCode != 0 {
-			fmt.Println(">>>>>>>>>>>>")
-			fmt.Println(containerStatus)
 			pod.Status.Phase = v1.PodFailed
 			pod.Status.Message = string(v1.PodFailed)
 			p.notifier(pod)
