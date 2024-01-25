@@ -42,12 +42,11 @@ data:
   test.sh: |
     #!/bin/bash
     # while true; do
-    #   date
+    #   dat
     #   echo "test"
     #   sleep 3
     # done
-    sleep 60 && date
-
+    sleep 40 && dat
 
 ---
 
@@ -58,13 +57,24 @@ metadata:
   name: new-test-pod
 spec:
   containers:
-    - name: job3
+    - name: job1
       image: test
       command: ["bash"]
       args: ["30", "2"]
       volumeMounts:
         - name: test
-          mountPath: stress/job3
+          mountPath: stress/job1
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+    - name: job2
+      image: direct-stress
+      command: ["bash"]
+      args: ["10", "2"]
+      volumeMounts:
+        - name: direct-stress
+          mountPath: stress/job2
       resources:
         limits:
           cpu: "1"
