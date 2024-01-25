@@ -490,11 +490,6 @@ func checkTerminatedContainer(pod *v1.Pod) (allZombies bool, stderrNotEmpty bool
 	return
 }
 
-// logError logs an error message.
-func logError(message string, containerName string, err error) {
-	log.G(context.Background()).WithField("container", containerName).Errorf(message, err)
-}
-
 // getProcessStatus gets the process status for each pid.
 func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 	var processStatus []string
