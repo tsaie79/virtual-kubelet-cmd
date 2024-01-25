@@ -118,8 +118,9 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			args := prepareArgs(container.Args)
 
 			// Run the script and get the process group ID
-			pgid, containerState, err := runScript(ctx, command, args, container.Env, path.Dir(scriptPath))
+			pgid, containerState, err := runScript(ctx, command, args, container.Env, path.Dir(scriptPath), startTime)
 			if err != nil {
+				fmt.Println(pgid)
 				fmt.Println(err)
 				errorChannel <- err
 				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState, pgid)
@@ -192,7 +193,7 @@ func prepareArgs(args []string) string {
 	return ""
 }
 
-func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar, stdoutPath string) (int, *v1.ContainerState, error) {
+func runScript(ctx context.Context, command []string, args string, env []v1.EnvVar, stdoutPath string, startTime metav1.Time) (int, *v1.ContainerState, error) {
 	// Create a map of environment variables
 	envMap := createEnvironmentMap()
 
@@ -217,24 +218,24 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, 0)
+		return handleCommandStartError(ctx, cmd, err, 0, "cmd.Start() failed", startTime)
 	}
 
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		return handleGetpgidError(ctx, cmd, err)
+		return handleCommandStartError(ctx, cmd, err, 0, "failed to get pgid", startTime)
 	}
 
 
 	// write the stdout and stderr to files without waiting for the command to finish
 	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, pgid)
+		return handleCommandStartError(ctx, cmd, err, pgid, "failed to create stdout file", startTime)
 	}
 	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, pgid)
+		return handleCommandStartError(ctx, cmd, err, pgid, "failed to create stderr file", startTime)
 	}
 
 	go func() {
@@ -264,7 +265,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		// defer wg.Done()
 		err := cmd.Wait()
 		if err != nil {
-			pgid, state, err := handleCommandRunError(ctx, cmd, err, pgid)
+			pgid, state, err := handleCommandStartError(ctx, cmd, err, pgid, "cmd.Wait() failed", startTime)
 			resultCh <- Result{Pgid: pgid, State: state, Err: err}
 			return
 		}
@@ -283,8 +284,8 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		}else{
 			return result.Pgid, nil, nil
 		}
-	case <-time.After(time.Second * 3): // adjust the timeout as needed. Can't be > 5 secs or the method getPods will be executed.
-		log.G(ctx).WithField("command", cmd.Args).Info("Command is not finished yet after 3 seconds")
+	case <-time.After(time.Second * 1/2): // adjust the timeout as needed. Can't be > 5 secs or the method getPods will be executed.
+		log.G(ctx).WithField("command", cmd.Args).Info("Command is not finished yet after 1/2 seconds")
 		return pgid, nil, nil
 	}
 }
@@ -318,39 +319,14 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 	return cmd
 }
 
-
-func handleCommandRunError(ctx context.Context, cmd *exec.Cmd, err error, pgid int) (int, *v1.ContainerState, error) {
-	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to run command; error: %v", err)
+func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, message string, startTime metav1.Time) (int, *v1.ContainerState, error) {
+	log.G(ctx).WithField("command", cmd.Args).Errorf("%v, error: %v", message, err)
 	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
-			Reason:     "handleCommandRunError",
-			Message:    fmt.Sprintf("failed to run command; error: %v", err.Error()),
-			FinishedAt: metav1.Now(),
-		},
-	}, err
-}
-
-
-func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error, pgid int) (int, *v1.ContainerState, error) {
-	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to start command; error: %v", err)
-	return pgid, &v1.ContainerState{
-		Terminated: &v1.ContainerStateTerminated{
-			ExitCode:   1,
-			Reason:     "handleCommandStartError",
-			Message:    fmt.Sprintf("failed to start command; error: %v", err.Error()),
-			FinishedAt: metav1.Now(),
-		},
-	}, err
-}
-
-func handleGetpgidError(ctx context.Context, cmd *exec.Cmd, err error) (int, *v1.ContainerState, error) {
-	log.G(ctx).WithField("command", cmd.Args).Errorf("failed to get process group id; error: %v", err)
-	return 0, &v1.ContainerState{
-		Terminated: &v1.ContainerStateTerminated{
-			ExitCode:   1,
-			Reason:     "handleGetpgidError",
-			Message:    fmt.Sprintf("failed to get process group id; error: %v", err),
+			Reason:     "containerStartError",
+			Message:    fmt.Sprintf("%v, error: %v", message, err.Error()),
+			StartedAt:  startTime,
 			FinishedAt: metav1.Now(),
 		},
 	}, err
