@@ -41,12 +41,12 @@ metadata:
 data:
   test.sh: |
     #!/bin/bash
-    # while true; do
-    #   dat
-    #   echo "test"
-    #   sleep 3
-    # done
-    sleep 40 && dat
+    ## Test start of containers:
+    dat
+    # date
+    # Test conflict of start and getpod:
+    # sleep $1 && dat
+    # sleep $1 && date
 
 ---
 
@@ -60,7 +60,7 @@ spec:
     - name: job1
       image: test
       command: ["bash"]
-      args: ["30", "2"]
+      args: ["10", "2"]
       volumeMounts:
         - name: test
           mountPath: stress/job1
@@ -71,7 +71,7 @@ spec:
     - name: job2
       image: direct-stress
       command: ["bash"]
-      args: ["10", "2"]
+      args: ["15", "2"]
       volumeMounts:
         - name: direct-stress
           mountPath: stress/job2
