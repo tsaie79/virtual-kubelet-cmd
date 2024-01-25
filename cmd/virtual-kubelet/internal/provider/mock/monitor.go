@@ -334,10 +334,13 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 
 func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod *v1.Pod) *v1.Pod {
 	containerStatuses := make([]v1.ContainerStatus, len(pod.Spec.Containers))
-	containerStartTime := make(map[string]metav1.Time)
-	containerFinishTime := make(map[string]metav1.Time)
+	prevContainerStartTime := make(map[string]metav1.Time)
+	prevContainerFinishTime := make(map[string]metav1.Time)
+	prevContainerTerminatedReason := make(map[string]string)
+	prevContainerTerminatedMessage := make(map[string]string)
 	prevContainerStateStrings := make(map[string]string)
-	ImageIDs := make(map[string]string)
+	imageIDs := make(map[string]string)
+	pgids := make(map[string]string)
 
 	for i, container := range pod.Spec.Containers {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
@@ -345,32 +348,36 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 				continue
 			}
 			
-			ImageIDs[container.Name] = containerStatus.ImageID
+			imageIDs[container.Name] = containerStatus.ImageID
+			pgids[container.Name] = containerStatus.ContainerID
 
 			if containerStatus.State.Running != nil {
 				prevContainerStateStrings[container.Name] = "Running"
-				containerStartTime[container.Name] = containerStatus.State.Running.StartedAt
-				containerFinishTime[container.Name] = metav1.NewTime(time.Now())
+				prevContainerStartTime[container.Name] = containerStatus.State.Running.StartedAt
+				prevContainerFinishTime[container.Name] = metav1.NewTime(time.Now())
 			} else if containerStatus.State.Terminated != nil {
 				prevContainerStateStrings[container.Name] = "Terminated"
-				containerStartTime[container.Name] = containerStatus.State.Terminated.StartedAt
-				containerFinishTime[container.Name] = containerStatus.State.Terminated.FinishedAt
+				prevContainerStartTime[container.Name] = containerStatus.State.Terminated.StartedAt
+				prevContainerFinishTime[container.Name] = containerStatus.State.Terminated.FinishedAt
+				prevContainerTerminatedReason[container.Name] = containerStatus.State.Terminated.Reason
+				prevContainerTerminatedMessage[container.Name] = containerStatus.State.Terminated.Message
 			} else {
 				prevContainerStateStrings[container.Name] = "Waiting"
-				containerStartTime[container.Name] = metav1.NewTime(time.Now())
-				containerFinishTime[container.Name] = metav1.NewTime(time.Now())
+				prevContainerStartTime[container.Name] = metav1.NewTime(time.Now())
+				prevContainerFinishTime[container.Name] = metav1.NewTime(time.Now())
 			}
 
 			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
-			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, containerStartTime, containerFinishTime, pgidFile, ImageIDs)
+			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids)
 			break
 		}
 	}
 
-	allZombies, stderrNotEmpty, _, _, _ := checkTerminatedContainer(pod)
-	if allZombies {
+	areAllTerminated, stderrNotEmpty, getPgidError, getPidsError, getStderrFileInfoError, containerStartError := checkTerminatedContainer(pod)
+	fmt.Printf("areAllTerminated: %v, stderr not empty: %v\n", areAllTerminated, stderrNotEmpty)
+	if areAllTerminated {
 		log.G(context.Background()).Info("All processes are zombies.")
-		if stderrNotEmpty {
+		if stderrNotEmpty || containerStartError || getPgidError || getPidsError || getStderrFileInfoError {
 			pod.Status.Phase = v1.PodFailed
 		}else{
 			pod.Status.Phase = v1.PodSucceeded
@@ -389,22 +396,37 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
-func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, containerStartTime map[string]metav1.Time, containerFinishTime map[string]metav1.Time, pgidFile string, ImageIDs map[string]string) *v1.ContainerStatus {
-	// Get the process group ID (pgid) from the container
-	pgid, err := getPgidFromPgidFile(pgidFile)
-	if err != nil {
-		log.G(context.Background()).Error("Error getting pgid:", err)
+func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string) *v1.ContainerStatus {
+	//if prevContainerReason and prevContainerMessage are not empty, then pass them to the container status
+	if prevContainerTerminatedReason[c.Name] == "containerStartError" {
+		fmt.Printf("prevContainerTerminatedReason: %v, prevContainerTerminatedMessage: %v\n", prevContainerTerminatedReason[c.Name], prevContainerTerminatedMessage[c.Name])
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  containerStartTime[c.Name],
-				FinishedAt: metav1.NewTime(time.Now()),
+				StartedAt:  prevContainerStartTime[c.Name],
+				FinishedAt: prevContainerFinishTime[c.Name],
 				ExitCode:   1,
-				Reason:     "getPgidError",
-				Message:    "Error getting pgid",
+				Reason:     prevContainerTerminatedReason[c.Name],
+				Message:    prevContainerTerminatedMessage[c.Name],
 			},
 		}
-		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+		return createContainerStatus(c, containerState, pgids[c.Name], imageIDs[c.Name])
 	}
+	
+	// Get the process group ID (pgid) from the container
+	// pgid, err := getPgidFromPgidFile(pgidFile)
+	// if err != nil {
+	// 	log.G(context.Background()).Error("Error getting pgid:", err)
+	// 	containerState := &v1.ContainerState{
+	// 		Terminated: &v1.ContainerStateTerminated{
+	// 			StartedAt:  prevContainerStartTime[c.Name],
+	// 			FinishedAt: metav1.NewTime(time.Now()),
+	// 			ExitCode:   1,
+	// 			Reason:     "getPgidError",
+	// 			Message:    "Error getting pgid",
+	// 		},
+	// 	}
+	// 	return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+	// }
 
 	// Get the process IDs (pids)
 	pids, err := process.Pids()
@@ -412,18 +434,18 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 		log.G(context.Background()).Error("Error getting pids:", err)
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  containerStartTime[c.Name],
+				StartedAt:  prevContainerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
 				ExitCode:   1,
 				Reason:     "getPidsError",
 				Message:    "Error getting pids",
 			},
 		}
-		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+		return createContainerStatus(c, containerState, pgids[c.Name], imageIDs[c.Name])
 	}
 
 	// Check the stderr file for errors
-	stderrFilePath := path.Join(filepath.Dir(ImageIDs[c.Name]), "stderr")
+	stderrFilePath := path.Join(filepath.Dir(imageIDs[c.Name]), "stderr")
 
 	// Get the file info
 	info, err := os.Stat(stderrFilePath)
@@ -431,14 +453,14 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 		log.G(context.Background()).Error("Error getting stderr file info:", err)
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  containerStartTime[c.Name],
+				StartedAt:  prevContainerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
 				ExitCode:   1,
 				Reason:     "getStderrFileInfoError",
 				Message:    "Error getting stderr file info",
 			},
 		}
-		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+		return createContainerStatus(c, containerState, pgids[c.Name], imageIDs[c.Name])
 	}
 
 	// Check if the file is empty
@@ -451,23 +473,21 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	}
 
 	// Get the process status for each pid
-	processStatus := getProcessStatus(pids, pgid, c.Name)
+	processStatus := getProcessStatus(pids, pgids[c.Name], c.Name)
 
 	// Determine the container status 
-	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name], ImageIDs[c.Name], hasStderr)
+	containerStatus := determineContainerStatus(c, processStatus, pgids[c.Name], prevContainerStartTime[c.Name].Time, prevContainerFinishTime[c.Name].Time, prevContainerState[c.Name], imageIDs[c.Name], hasStderr)
 	return containerStatus
 }
 
 // checkContainerStatus checks the status of all containers in the pod.
 // It returns true if all containers are in the "Zombie" state and if any container has "stderrNotEmpty" in its state.
-func checkTerminatedContainer(pod *v1.Pod) (allZombies bool, stderrNotEmpty bool, getPgidError bool, getPidsError bool, getStderrFileInfoError bool) {
-	zombieCounter := 0
+func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, stderrNotEmpty bool, getPgidError bool, getPidsError bool, getStderrFileInfoError bool, containerStartError bool) {
+	terminatedContainerCounter := 0
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Terminated != nil {
-			// Check if the container is in the "Zombie" state
-			if containerStatus.State.Terminated.ExitCode == 0 {
-				zombieCounter++
-			}
+			terminatedContainerCounter++
+			
 			// Check if the container has "stderrNotEmpty" in its state
 			if containerStatus.State.Terminated.Reason == "stderrNotEmpty" {
 				stderrNotEmpty = true
@@ -484,14 +504,17 @@ func checkTerminatedContainer(pod *v1.Pod) (allZombies bool, stderrNotEmpty bool
 			if containerStatus.State.Terminated.Reason == "getStderrFileInfoError" {
 				getStderrFileInfoError = true
 			}
+			if containerStatus.State.Terminated.Reason == "containerStartError" {
+				containerStartError = true
+			}
 		}
 	}
-	allZombies = zombieCounter == len(pod.Status.ContainerStatuses)
+	areAllTerminated = terminatedContainerCounter == len(pod.Status.ContainerStatuses)
 	return
 }
 
 // getProcessStatus gets the process status for each pid.
-func getProcessStatus(pids []int32, pgid int, containerName string) []string {
+func getProcessStatus(pids []int32, pgid string, containerName string) []string {
 	var processStatus []string
 	for _, pid := range pids {
 		p, err := process.NewProcess(pid)
@@ -504,7 +527,9 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 			continue
 		}
 
-		if processPgid == pgid {
+		// convert pgid to string
+		processPgidString := strconv.Itoa(processPgid)
+		if processPgidString == pgid {
 			// if no process is found with the given pid, then p.Cmdline() returns an empty string
 			cmd, err := p.Cmdline()
 			if err != nil {
@@ -520,7 +545,7 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 }
 
 // determineContainerStatus determines the container status.
-func determineContainerStatus(c *v1.Container, processStatus []string, pgid int, containerStartTime time.Time, containerFinishTime time.Time, prevContainerStateString string, ImageID string, hasStderr bool) *v1.ContainerStatus {
+func determineContainerStatus(c *v1.Container, processStatus []string, pgid string, prevContainerStartTime time.Time, prevContainerFinishTime time.Time, prevContainerStateString string, ImageID string, hasStderr bool) *v1.ContainerStatus {
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentContainerState string
@@ -547,7 +572,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 	if currentContainerState == "Running" {
 		containerState = &v1.ContainerState{
 			Running: &v1.ContainerStateRunning{
-				StartedAt: metav1.NewTime(containerStartTime),
+				StartedAt: metav1.NewTime(prevContainerStartTime),
 			},
 		}
 	} else if currentContainerState == "Terminated" {
@@ -563,11 +588,11 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 			message = "Remaining processes are zombies"
 			exitCode = 0
 		}
-
+		fmt.Printf("exitCode: %v\n", exitCode)
 		containerState = &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  metav1.NewTime(containerStartTime),
-				FinishedAt: metav1.NewTime(containerFinishTime),
+				StartedAt:  metav1.NewTime(prevContainerStartTime),
+				FinishedAt: metav1.NewTime(prevContainerFinishTime),
 				ExitCode:   exitCode,
 				Reason:	 reason,
 				Message:    message,
@@ -580,7 +605,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 }
 
 // createContainerStatus creates a container status.
-func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid int, ImageID string) *v1.ContainerStatus {
+func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid string, ImageID string) *v1.ContainerStatus {
 	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
 	ready := false
 	if containerState.Running != nil {
@@ -594,7 +619,7 @@ func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, p
 		RestartCount: 0,
 		Image:        c.Image,
 		ImageID:      ImageID,
-		ContainerID:  fmt.Sprintf("%v", pgid),
+		ContainerID:  pgid,
 	}
 }
 
