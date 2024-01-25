@@ -558,19 +558,22 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid int,
 	} else if currentContainerState == "Terminated" {
 		var reason string
 		var message string
+		var exitCode int32
 		if hasStderr {
 			reason = "stderrNotEmpty"
 			message = "The stderr file is not empty."
+			exitCode = 1
 		} else {
 			reason = "Completed"
 			message = "Remaining processes are zombies"
+			exitCode = 0
 		}
 
 		containerState = &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  metav1.NewTime(containerStartTime),
 				FinishedAt: metav1.NewTime(containerFinishTime),
-				ExitCode:   0,
+				ExitCode:   exitCode,
 				Reason:	 reason,
 				Message:    message,
 			},
