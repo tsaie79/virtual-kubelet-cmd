@@ -369,7 +369,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 	allZombies, stderrNotEmpty, _, _, _ := checkTerminatedContainer(pod)
 	if allZombies {
-		fmt.Println("allZombies")
+		log.G(context.Background()).Info("All processes are zombies.")
 		if stderrNotEmpty {
 			pod.Status.Phase = v1.PodFailed
 		}else{
@@ -467,7 +467,6 @@ func checkTerminatedContainer(pod *v1.Pod) (allZombies bool, stderrNotEmpty bool
 			// Check if the container is in the "Zombie" state
 			if containerStatus.State.Terminated.ExitCode == 0 {
 				zombieCounter++
-				fmt.Println("zombieCounter")
 			}
 			// Check if the container has "stderrNotEmpty" in its state
 			if containerStatus.State.Terminated.Reason == "stderrNotEmpty" {
@@ -514,7 +513,7 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 			// if no process is found with the given pid, then p.Cmdline() returns an empty string
 			cmd, err := p.Cmdline()
 			if err != nil {
-				logError("Error getting command line for process %v: %v\n", containerName, err)
+				log.G(context.Background()).WithField("pid", pid).Error("Error getting command line:", err)
 				continue
 			}
 			status, _ := p.Status()
