@@ -281,11 +281,10 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		if result.Err != nil {
 			return result.Pgid, result.State, result.Err
 		}else{
-			fmt.Println("<<<<<<<<<")
 			return result.Pgid, nil, nil
 		}
-	case <-time.After(time.Second * 3): // adjust the timeout as needed
-		fmt.Println("Command execution not finished after 0.5 second")
+	case <-time.After(time.Second * 3): // adjust the timeout as needed. Can't be > 5 secs or the method getPods will be executed.
+		log.G(ctx).WithField("command", cmd.Args).Info("Command is not finished yet after 3 seconds")
 		return pgid, nil, nil
 	}
 }
@@ -315,7 +314,7 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 		return envMap[s]
 	}
 	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand))
-	log.G(ctx).WithField("command", cmd.Args).Info("command")
+	log.G(ctx).WithField("command", cmd.Args).Info("Command to be executed")
 	return cmd
 }
 
