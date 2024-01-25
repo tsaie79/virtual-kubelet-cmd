@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -409,10 +410,10 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 		log.G(context.Background()).Error("Error getting pgid:", err)
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  metav1.NewTime(time.Now()),
+				StartedAt:  containerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
 				ExitCode:   1,
-				Reason:     "Error",
+				Reason:     "getPgidError",
 				Message:    "Error getting pgid",
 			},
 		}
@@ -425,31 +426,54 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 		log.G(context.Background()).Error("Error getting pids:", err)
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  metav1.NewTime(time.Now()),
+				StartedAt:  containerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
 				ExitCode:   1,
-				Reason:     "Error",
+				Reason:     "getPidsError",
 				Message:    "Error getting pids",
 			},
 		}
 		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
 	}
 
-	// Get the process status for each pid
-	processStatus := getProcessStatus(pids, pgid, c.Name)
-	if processStatus == nil {
-		log.G(context.Background()).Error("Error getting process status")
+	// Check the stderr file for errors
+	stderrFilePath := path.Join(filepath.Dir(ImageIDs[c.Name]), "stderr")
+
+	// Get the file info
+	info, err := os.Stat(stderrFilePath)
+	if err != nil {
+		log.G(context.Background()).Error("Error getting stderr file info:", err)
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				StartedAt:  metav1.NewTime(time.Now()),
+				StartedAt:  containerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
-				ExitCode:    1,
-				Reason:     "Error",
-				Message:    "Error getting process status",
+				ExitCode:   1,
+				Reason:     "getStderrFileInfoError",
+				Message:    "Error getting stderr file info",
 			},
 		}
 		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
 	}
+
+	// Check if the file is empty
+	if info.Size() != 0 {
+		log.G(context.Background()).Error("The stderr file is not empty.")
+		containerState := &v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				StartedAt:  containerStartTime[c.Name],
+				FinishedAt: metav1.NewTime(time.Now()),
+				ExitCode:   1,
+				Reason:     "stderrNotEmpty",
+				Message:    "The stderr file is not empty",
+			},
+		}
+		return createContainerStatus(c, containerState, pgid, ImageIDs[c.Name])
+	} else {
+		log.G(context.Background()).Info("The stderr file is empty.")
+	}
+
+	// Get the process status for each pid
+	processStatus := getProcessStatus(pids, pgid, c.Name)
 
 	// Determine the container status 
 	containerStatus := determineContainerStatus(c, processStatus, pgid, containerStartTime[c.Name].Time, containerFinishTime[c.Name].Time, prevContainerState[c.Name], ImageIDs[c.Name])
@@ -488,13 +512,13 @@ func getProcessStatus(pids []int32, pgid int, containerName string) []string {
 		}
 
 		if processPgid == pgid {
-			cmd, _ := p.Cmdline()
-			fmt.Println("cmd", cmd)
-			status, err := p.Status()
+			// if no process is found with the given pid, then p.Cmdline() returns an empty string
+			cmd, err := p.Cmdline()
 			if err != nil {
-				logError("Error getting process status:", containerName, err)
-				return nil
+				logError("Error getting command line for process %v: %v\n", containerName, err)
+				continue
 			}
+			status, _ := p.Status()
 			processStatus = append(processStatus, status)
 			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
 		}
