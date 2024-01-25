@@ -2,26 +2,24 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: direct-stress
-  namespace: default
+  namespace: test
 data:
   stress.sh: |
     #!/bin/bash
-    echo $workdir
-    # stress --timeout $TIME --vm 1 --vm-bytes 4G # test memory
-    stress --timeout $TIME --cpu $NUMBER # test cpu
+    stress --timeout $1 --cpu $2 --vm $3 --vm-bytes $4 # test memory
 
 ---
+
 
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: docker-stress
-  namespace: default
+  namespace: test
 data:
   stress.sh: |
     #!/bin/bash
-    echo $workdir
-    docker run -d --rm -e NUMBER=$NUMBER -e TIME=$TIME jlabtsai/stress:latest
+    docker run -d --rm -e NUMBER=$2 -e TIME=$1 jlabtsai/stress:latest
 
 ---
 
@@ -29,11 +27,12 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: shifter-stress
-  namespace: default
+  namespace: test
 data:
   stress.sh: |
     #!/bin/bash
-    echo $workdir
+    export NUMBER=$2
+    export TIME=$1
     shifter --image="jlabtsai/stress:latest" --entrypoint
 
 ---
@@ -41,11 +40,14 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: test
-  namespace: default
+  namespace: test
 data:
   test.sh: |
     #!/bin/bash
-    echo $workdir
+    while true; do
+      date
+      sleep 3
+    done
 
 
 ---
@@ -53,62 +55,60 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: stress-job-direct
+  name: stress
+  namespace: test
 spec:
   template:
     spec:
       containers:
         - name: job1
-          image: job1
-          command: ["/bin/bash", "-c"]
-          args: ["bash $workdir/stress.sh > $workdir/stdout 2>$workdir/stderr"]
-          env:
-            - name: NUMBER
-              value: "4"
-            - name: TIME
-              value: "30"
-            - name: workdir
-              value: "~/stress/job1"
+          image: stress
+          command: ["bash"]
+          args: ["200", "1", "3", "1G"]
           volumeMounts:
-            - name: direct-stress
-              mountPath: ~/stress/job1
-            - name: test
-              mountPath: ~/stress/test
+            - name: stress
+              mountPath: stress/job1
           resources:
             limits:
               cpu: "1"
               memory: 1Gi
         - name: job2
-          image: job2 
-          command: ["/bin/bash", "-c"]
-          args: ["bash $workdir/stress.sh > $workdir/stdout 2> $workdir/stderr"]
-          env:
-            - name: NUMBER
-              value: "4"
-            - name: TIME
-              value: "100"
-            - name: workdir
-              value: "~/stress/job2"
+          image: stress 
+          command: ["bash"]
+          args: ["100", "1", "2", "1G"]
           volumeMounts:
-            - name: direct-stress
-              mountPath: ~/stress/job2
+            - name: stress
+              mountPath: stress/job2
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+
+        - name: job3
+          image: stress
+          command: ["bash"]
+          args: []
+          volumeMounts:
+            - name: test
+              mountPath: test
           resources:
             limits:
               cpu: "1"
               memory: 1Gi
       volumes:
-        - name: direct-stress 
+        - name: stress
           configMap:
-            name: direct-stress
+            name: shifter-stress
         - name: test
           configMap:
             name: test
       nodeSelector:
         kubernetes.io/role: agent
-        kubernetes.io/hostname: vk
+        kubernetes.io/hostname: vk-nersc
       tolerations:
         - key: "virtual-kubelet.io/provider"
           value: "mock"
           effect: "NoSchedule"
       restartPolicy: Never
   backoffLimit: 4
+  completions: 1
