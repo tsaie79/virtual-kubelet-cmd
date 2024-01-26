@@ -225,9 +225,10 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 	if badContainers == len(pod.Status.ContainerStatuses) {
 		pod.Status.Phase = v1.PodFailed
-		pod.Status.Reason = "AllContainersFailed"
-		pod.Status.Message = "All containers in the pod have failed"
+		pod.Status.Reason = "AllContainersStartFailed"
+		pod.Status.Message = "All containers in the pod failed to start"
 		pod.Status.StartTime = &startTime
+		p.notifier(pod)
 		return nil
 	}
 
@@ -236,7 +237,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Reason = "PodPending"
 	pod.Status.Message = "Pod is pending"
 	pod.Status.StartTime = &startTime
-
+	p.notifier(pod)
 	return nil
 }
 
