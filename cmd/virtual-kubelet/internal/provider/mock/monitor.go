@@ -374,7 +374,6 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	}
 
 	areAllTerminated, stderrNotEmpty, getPgidError, getPidsError, getStderrFileInfoError, containerStartError := checkTerminatedContainer(pod)
-	fmt.Printf("areAllTerminated: %v, stderr not empty: %v\n", areAllTerminated, stderrNotEmpty)
 	if areAllTerminated {
 		log.G(context.Background()).Info("All processes are zombies.")
 		if stderrNotEmpty || containerStartError || getPgidError || getPidsError || getStderrFileInfoError {
@@ -399,7 +398,6 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string) *v1.ContainerStatus {
 	//if prevContainerReason and prevContainerMessage are not empty, then pass them to the container status
 	if prevContainerTerminatedReason[c.Name] == "containerStartError" {
-		fmt.Printf("prevContainerTerminatedReason: %v, prevContainerTerminatedMessage: %v\n", prevContainerTerminatedReason[c.Name], prevContainerTerminatedMessage[c.Name])
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
@@ -588,7 +586,6 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 			message = "Remaining processes are zombies"
 			exitCode = 0
 		}
-		fmt.Printf("exitCode: %v\n", exitCode)
 		containerState = &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  metav1.NewTime(prevContainerStartTime),
