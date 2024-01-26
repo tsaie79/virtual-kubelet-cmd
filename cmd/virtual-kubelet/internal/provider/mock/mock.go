@@ -211,7 +211,6 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
     }
 
 	// Run scripts in parallel and collect container statuses and errors
-	fmt.Printf(">>>>>>>>>>>>>>>>>>>>>")
 	_, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
 	for containerStatus := range containerStatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
@@ -486,7 +485,6 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	for _, pod := range p.pods {
 		// Create a new pod spec with the previous status and append it to the list
 		if pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded {
-			fmt.Printf("pod %s is %s\n", pod.Name, pod.Status.Phase)
 			continue
 		}
 		pods = append(pods, p.createPodStatusFromContainerStatus(ctx, pod))
