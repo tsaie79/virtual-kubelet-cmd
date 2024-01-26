@@ -120,8 +120,6 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			// Run the script and get the process group ID
 			pgid, containerState, err := runScript(ctx, command, args, container.Env, path.Dir(scriptPath), startTime)
 			if err != nil {
-				fmt.Println(pgid)
-				fmt.Println(err)
 				errorChannel <- err
 				containerStatusChannel <- generateContainerStatus(container, scriptPath, false, containerState, pgid)
 				return
