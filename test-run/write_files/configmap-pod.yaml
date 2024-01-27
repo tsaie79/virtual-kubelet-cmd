@@ -42,11 +42,14 @@ data:
   test.sh: |
     #!/bin/bash
     ## Test start of containers:
-    dat
+    # dat
     # date
     # Test conflict of start and getpod:
     # sleep $1 && dat
     # sleep $1 && date
+
+    ## Long job
+    sleep 300
 
 ---
 
@@ -54,36 +57,39 @@ data:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: new-test-pod
+  name: t1
   labels:
     app: new-test-pod
 spec:
   containers:
-    - name: job1
-      image: test
+    - name: t1
+      image: direct-stress
       command: ["bash"]
-      args: ["10", "2"]
+      args: ["300", "2"]
       volumeMounts:
-        - name: test
+        - name: direct-stress
           mountPath: stress/job1
       resources:
         limits:
           cpu: "1"
           memory: 1Gi
-    - name: job2
-      image: direct-stress
-      command: ["bash"]
-      args: ["15", "2"]
-      volumeMounts:
-        - name: direct-stress
-          mountPath: stress/job2
-      resources:
         requests:
           cpu: "1"
           memory: 1Gi
-        limits:
-          cpu: "1"
-          memory: 1Gi
+    # - name: job2
+    #   image: direct-stress
+    #   command: ["bash"]
+    #   args: ["15", "2"]
+    #   volumeMounts:
+    #     - name: direct-stress
+    #       mountPath: stress/job2
+    #   resources:
+    #     requests:
+    #       cpu: "1"
+    #       memory: 1Gi
+    #     limits:
+    #       cpu: "1"
+    #       memory: 1Gi
   volumes:
     - name: direct-stress 
       configMap:
@@ -99,11 +105,6 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
         - matchExpressions:
-          - key: jiriaf.walltime
-          # set operator to equal, not in, etc.
-            operator: In
-            values:
-            - "01.00.00"
           - key: jiriaf.nodetype
             operator: In
             values:
@@ -112,6 +113,82 @@ spec:
             operator: In
             values:
             - "Local"
+          - key: jiriaf.alivetime
+            operator: Lt
+            values:
+            - "2900"
+  tolerations:
+    - key: "virtual-kubelet.io/provider"
+      value: "mock"
+      effect: "NoSchedule"
+  restartPolicy: Never
+
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: t2
+  labels:
+    app: new-test-pod
+spec:
+  containers:
+    - name: t2
+      image: direct-stress
+      command: ["bash"]
+      args: ["300", "1"]
+      volumeMounts:
+        - name: direct-stress
+          mountPath: stress/job1
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+        requests:
+          cpu: "1"
+          memory: 1Gi
+    # - name: job2
+    #   image: direct-stress
+    #   command: ["bash"]
+    #   args: ["15", "2"]
+    #   volumeMounts:
+    #     - name: direct-stress
+    #       mountPath: stress/job2
+    #   resources:
+    #     requests:
+    #       cpu: "1"
+    #       memory: 1Gi
+    #     limits:
+    #       cpu: "1"
+    #       memory: 1Gi
+  volumes:
+    - name: direct-stress 
+      configMap:
+        name: direct-stress
+    - name: test
+      configMap:
+        name: test
+  nodeSelector:
+    kubernetes.io/role: agent
+    # kubernetes.io/hostname: vk1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: jiriaf.nodetype
+            operator: In
+            values:
+            - "cpu"
+          - key: jiriaf.site
+            operator: In
+            values:
+            - "Local"
+          - key: jiriaf.alivetime
+            operator: Lt
+            values:
+            - "3100"
   tolerations:
     - key: "virtual-kubelet.io/provider"
       value: "mock"
