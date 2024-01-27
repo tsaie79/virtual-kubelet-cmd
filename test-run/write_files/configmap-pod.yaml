@@ -114,9 +114,9 @@ spec:
             values:
             - "Local"
           - key: jiriaf.alivetime
-            operator: Lt
+            operator: Gt
             values:
-            - "2900"
+            - "3540"
   tolerations:
     - key: "virtual-kubelet.io/provider"
       value: "mock"
@@ -143,10 +143,10 @@ spec:
           mountPath: stress/job1
       resources:
         limits:
-          cpu: "1"
-          memory: 1Gi
+          cpu: "2"
+          memory: 18Gi
         requests:
-          cpu: "1"
+          cpu: "2"
           memory: 1Gi
     # - name: job2
     #   image: direct-stress
@@ -186,9 +186,9 @@ spec:
             values:
             - "Local"
           - key: jiriaf.alivetime
-            operator: Lt
+            operator: Gt
             values:
-            - "3100"
+            - "3480"
   tolerations:
     - key: "virtual-kubelet.io/provider"
       value: "mock"
