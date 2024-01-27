@@ -532,8 +532,9 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	}
 
 	// Start the time when this goroutine starts
+	// initialize the node alive time by setting jiriaf.alivetime label as JIRIAF_WALLTIME
+	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
 	startTime := time.Now()
-
 	go func() {
 		for range nodeAge.C {
 			// Calculate elapsed time in seconds
