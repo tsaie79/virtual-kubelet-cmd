@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"os"
 	"path"
 	"strings"
 	"time"
@@ -33,6 +32,7 @@ import (
 
 	// "github.com/pkg/errors"
 	"strconv"
+	"os"
 )
 
 const (
@@ -233,11 +233,17 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	// Set pod status to pending
-	pod.Status.Phase = v1.PodPending
-	pod.Status.Reason = "PodPending"
-	pod.Status.Message = "Pod is pending"
+	// pod.Status.Phase = v1.PodPending
+	// pod.Status.Reason = "PodPending"
+	// pod.Status.Message = "Pod is pending"
+	// pod.Status.StartTime = &startTime
+	// p.notifier(pod)
+	pod.Status.Phase = v1.PodRunning
+	pod.Status.Reason = "PodRunning"
+	pod.Status.Message = "Pod is running"
 	pod.Status.StartTime = &startTime
 	p.notifier(pod)
+
 	return nil
 }
 
@@ -485,7 +491,7 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	// Iterate over each pod
 	for _, pod := range p.pods {
 		// Create a new pod spec with the previous status and append it to the list
-		if pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded {
+		if pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodPending {
 			continue
 		}
 		pods = append(pods, p.createPodStatusFromContainerStatus(ctx, pod))
@@ -506,14 +512,43 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	n.Status.Conditions = p.nodeConditions()
 	n.Status.Addresses = p.nodeAddresses()
 	n.Status.DaemonEndpoints = p.nodeDaemonEndpoints()
-	os := p.operatingSystem
-	if os == "" {
-		os = "linux"
+	operationSystem := p.operatingSystem
+	if operationSystem == "" {
+		operationSystem = "linux"
 	}
-	n.Status.NodeInfo.OperatingSystem = os
+	n.Status.NodeInfo.OperatingSystem = operationSystem
 	n.Status.NodeInfo.Architecture = "amd64"
 	n.ObjectMeta.Labels["alpha.service-controller.kubernetes.io/exclude-balancer"] = "true"
 	n.ObjectMeta.Labels["node.kubernetes.io/exclude-from-external-load-balancers"] = "true"
+	n.ObjectMeta.Labels["jiriaf.nodetype"] = os.Getenv("JIRIAF_NODETYPE")
+	n.ObjectMeta.Labels["jiriaf.site"] = os.Getenv("JIRIAF_SITE")
+
+	// write a go routine to update the node alive time
+	nodeAge := time.NewTicker(30 * time.Second)
+	wallTime := os.Getenv("JIRIAF_WALLTIME")
+	wallTimeInt, err := strconv.ParseInt(wallTime, 10, 64)
+	if err != nil {
+		log.G(ctx).Error("Error converting walltime to int64")
+	}
+
+	// Start the time when this goroutine starts
+	startTime := time.Now()
+
+	go func() {
+		for range nodeAge.C {
+			// Calculate elapsed time in seconds
+			elapsedTime := time.Since(startTime).Seconds()
+
+			// Calculate aliveTime as wallTime - elapsedTime
+			aliveTime := wallTimeInt - int64(elapsedTime)
+
+			// Update the aliveTime label
+			// cfg.NodeSpec.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
+			n.ObjectMeta.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
+			log.G(ctx).Info("Updating node alive time, aliveTime: ", aliveTime)
+		}
+	}()
+
 }
 
 // Capacity returns a resource list containing the capacity limits.
