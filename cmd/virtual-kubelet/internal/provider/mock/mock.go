@@ -523,7 +523,7 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	n.ObjectMeta.Labels["jiriaf.nodetype"] = os.Getenv("JIRIAF_NODETYPE")
 	n.ObjectMeta.Labels["jiriaf.site"] = os.Getenv("JIRIAF_SITE")
 
-	if os.Getenv("JIRIAF_WALLTIME") != "" {
+	if os.Getenv("JIRIAF_WALLTIME") != "0" {
 		go p.aliveTimeLoop(ctx, n)
 	}
 }
