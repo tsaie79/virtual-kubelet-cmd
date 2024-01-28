@@ -10,7 +10,7 @@ export APISERVER_KEY_LOCATION="$VK_PATH/client.key"
 export KUBELET_PORT="10255"
 export NODENAME="vk"
 
-export JIRIAF_WALLTIME=60 # set multiple of 60
+export JIRIAF_WALLTIME="60" # set multiple of 60
 export JIRIAF_NODETYPE="cpu"
 export JIRIAF_SITE="Local"
 
