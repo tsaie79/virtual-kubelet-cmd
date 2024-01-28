@@ -522,8 +522,10 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	n.ObjectMeta.Labels["node.kubernetes.io/exclude-from-external-load-balancers"] = "true"
 	n.ObjectMeta.Labels["jiriaf.nodetype"] = os.Getenv("JIRIAF_NODETYPE")
 	n.ObjectMeta.Labels["jiriaf.site"] = os.Getenv("JIRIAF_SITE")
-	go p.aliveTimeLoop(ctx, n)
 
+	if os.Getenv("JIRIAF_WALLTIME") != "" {
+		go p.aliveTimeLoop(ctx, n)
+	}
 }
 
 
