@@ -522,34 +522,57 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	n.ObjectMeta.Labels["node.kubernetes.io/exclude-from-external-load-balancers"] = "true"
 	n.ObjectMeta.Labels["jiriaf.nodetype"] = os.Getenv("JIRIAF_NODETYPE")
 	n.ObjectMeta.Labels["jiriaf.site"] = os.Getenv("JIRIAF_SITE")
+	go p.aliveTimeLoop(ctx, n)
 
-	// write a go routine to update the node alive time
-	nodeAge := time.NewTicker(30 * time.Second)
+}
+
+
+
+func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
+	startTime := time.Now()
 	wallTime := os.Getenv("JIRIAF_WALLTIME")
-	wallTimeInt, err := strconv.ParseInt(wallTime, 10, 64)
-	if err != nil {
-		log.G(ctx).Error("Error converting walltime to int64")
+	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
+
+	t := time.NewTimer(5 * time.Second)
+	
+	if !t.Stop() {
+		<-t.C
 	}
 
+	for {
+		t.Reset(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			p.notifyNodeAliveTime(ctx, n, startTime, wallTime)
+		}
+	}
+}
+
+
+func (p *MockProvider) notifyNodeAliveTime(ctx context.Context, n *v1.Node, startTime time.Time, wallTime string) {
+	wallTimeInt, _ := strconv.ParseInt(wallTime, 10, 64)
 	// Start the time when this goroutine starts
 	// initialize the node alive time by setting jiriaf.alivetime label as JIRIAF_WALLTIME
-	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
-	startTime := time.Now()
-	go func() {
-		for range nodeAge.C {
-			// Calculate elapsed time in seconds
-			elapsedTime := time.Since(startTime).Seconds()
+	// Calculate elapsed time in seconds
+	elapsedTime := time.Since(startTime).Seconds()
 
-			// Calculate aliveTime as wallTime - elapsedTime
-			aliveTime := wallTimeInt - int64(elapsedTime)
+	// Calculate aliveTime as wallTime - elapsedTime
+	aliveTime := wallTimeInt - int64(elapsedTime)
 
-			// Update the aliveTime label
-			// cfg.NodeSpec.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
-			n.ObjectMeta.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
-			log.G(ctx).Info("Updating node alive time, aliveTime: ", aliveTime)
-		}
-	}()
+	// Update the aliveTime label
+	// cfg.NodeSpec.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
+	n.ObjectMeta.Labels["jiriaf.alivetime"] = strconv.FormatInt(aliveTime, 10)
 
+	// if aliveTime is less than 0, set node status to NotReady
+	if aliveTime <= 0 {
+		n.ObjectMeta.Labels["jiriaf.alivetime"] = "0"
+		n.Status.Conditions[0].Status = v1.ConditionFalse
+		n.Status.Conditions[0].Reason = "NodeNotReady"
+		n.Status.Conditions[0].Message = "Node is not ready"
+	}
+	log.G(ctx).Info("Updating node alive time, aliveTime: ", aliveTime)
 }
 
 // Capacity returns a resource list containing the capacity limits.
