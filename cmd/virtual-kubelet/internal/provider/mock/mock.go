@@ -522,7 +522,6 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	n.ObjectMeta.Labels["node.kubernetes.io/exclude-from-external-load-balancers"] = "true"
 	n.ObjectMeta.Labels["jiriaf.nodetype"] = os.Getenv("JIRIAF_NODETYPE")
 	n.ObjectMeta.Labels["jiriaf.site"] = os.Getenv("JIRIAF_SITE")
-	n.ObjectMeta.Labels["jiriaf.walltime"] = os.Getenv("JIRIAF_WALLTIME")
 
 	if os.Getenv("JIRIAF_WALLTIME") != "0" {
 		go p.aliveTimeLoop(ctx, n)
@@ -534,6 +533,7 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
 	startTime := time.Now()
 	wallTime := os.Getenv("JIRIAF_WALLTIME")
+	n.ObjectMeta.Labels["jiriaf.walltime"] = os.Getenv("JIRIAF_WALLTIME")
 	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
 
 	t := time.NewTimer(5 * time.Second)
