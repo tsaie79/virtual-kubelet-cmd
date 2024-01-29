@@ -585,13 +585,16 @@ func (p *MockProvider) capacity() v1.ResourceList {
 	totalMemory := int64(getSystemTotalMemory())
 	// convert totalMemory to KiB
 	totalMemory = totalMemory / 1024
-	
+	//add Ki to the end of totalMemory
+	totalMemoryStr := fmt.Sprintf("%dKi", totalMemory)
+
 	// Create quantities for CPU and memory
 	cpuQuantity := resource.Quantity{}
 	cpuQuantity.Set(numCPUs)
 
-	memoryQuantity := resource.Quantity{}
-	memoryQuantity.Set(totalMemory)
+	// set memoryQuantity as totalMemoryStr
+	memoryQuantity := resource.MustParse(totalMemoryStr)
+	
 	// make memoryQuantity in the unit of KiB
 	// Set a static quantity for pods
 	podsQuantity := resource.MustParse("1000")
