@@ -533,7 +533,7 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
 	startTime := time.Now()
 	wallTime := os.Getenv("JIRIAF_WALLTIME")
-	n.ObjectMeta.Labels["jiriaf.walltime"] = os.Getenv("JIRIAF_WALLTIME")
+	n.ObjectMeta.Labels["jiriaf.walltime"] = wallTime
 	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
 
 	t := time.NewTimer(5 * time.Second)
