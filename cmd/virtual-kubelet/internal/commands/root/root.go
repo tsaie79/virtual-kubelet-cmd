@@ -23,12 +23,13 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/manager"
 	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/provider"
-	"github.com/virtual-kubelet-cmd/internal/manager"
 	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
 	"github.com/virtual-kubelet/virtual-kubelet/log"
 	"github.com/virtual-kubelet/virtual-kubelet/node"
 	"github.com/virtual-kubelet/virtual-kubelet/node/api"
+
 	// "github.com/virtual-kubelet/virtual-kubelet/node/nodeutil"
 	"github.com/virtual-kubelet-cmd/node/nodeutil"
 	corev1 "k8s.io/api/core/v1"

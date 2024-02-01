@@ -3,7 +3,7 @@ package provider
 import (
 	"sync"
 
-	"github.com/virtual-kubelet-cmd/internal/manager"
+	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/manager"
 	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
 )
 

@@ -13,7 +13,7 @@ import (
 	"runtime"
 
 	dto "github.com/prometheus/client_model/go"
-	"github.com/virtual-kubelet-cmd/internal/manager"
+	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/manager"
 	"github.com/virtual-kubelet/virtual-kubelet/errdefs"
 
 	"github.com/virtual-kubelet/virtual-kubelet/log"
@@ -31,8 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	// "github.com/pkg/errors"
-	"strconv"
 	"os"
+	"strconv"
 )
 
 const (
@@ -118,7 +118,7 @@ func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalI
 // loadConfig loads the given json configuration files.
 func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) {
 	// if no config file is provided, set up a new config with default values
-	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity 
+	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity
 	if providerConfig == "" {
 		log.G(context.Background()).Info("No provider config file provided, using default values")
 		cpu := int64(runtime.NumCPU())
@@ -200,15 +200,15 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		return err
 	}
 
-    // Create a dir to store the pgid of each container at $HOME/.pgid
-    pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
-    if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
-        err := os.Mkdir(pgidDir, 0700)
-        if err != nil {
-            log.G(ctx).WithField("err", err).Error("Failed to create pgid dir")
+	// Create a dir to store the pgid of each container at $HOME/.pgid
+	pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
+	if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
+		err := os.Mkdir(pgidDir, 0700)
+		if err != nil {
+			log.G(ctx).WithField("err", err).Error("Failed to create pgid dir")
 			return err
-        }
-    }
+		}
+	}
 
 	// Run scripts in parallel and collect container statuses and errors
 	_, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
@@ -326,7 +326,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			}
 			// Iterate over each process ID
 			for _, pid := range pids {
-				// Create a new process instance 
+				// Create a new process instance
 				proc, err := process.NewProcess(pid)
 				if err != nil {
 					// errCh <- fmt.Errorf("failed to get process: %w", err)
@@ -398,14 +398,11 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 	return nil
 }
 
-
 // GetPod returns a pod by name that is stored in memory.
 func (p *MockProvider) GetPod(ctx context.Context, namespace, name string) (pod *v1.Pod, err error) {
 	ctx, span := trace.StartSpan(ctx, "GetPod")
 	// I want to add the function that when I call this GetPod function, it will return the informtation of the process of the pod based on
-	// the psgo command. 
-
-
+	// the psgo command.
 
 	defer func() {
 		span.SetStatus(err)
@@ -528,8 +525,6 @@ func (p *MockProvider) ConfigureNode(ctx context.Context, n *v1.Node) { //nolint
 	}
 }
 
-
-
 func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
 	startTime := time.Now()
 	wallTime := os.Getenv("JIRIAF_WALLTIME")
@@ -537,7 +532,7 @@ func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
 	n.ObjectMeta.Labels["jiriaf.alivetime"] = wallTime
 
 	t := time.NewTimer(5 * time.Second)
-	
+
 	if !t.Stop() {
 		<-t.C
 	}
@@ -552,7 +547,6 @@ func (p *MockProvider) aliveTimeLoop(ctx context.Context, n *v1.Node) {
 		}
 	}
 }
-
 
 func (p *MockProvider) notifyNodeAliveTime(ctx context.Context, n *v1.Node, startTime time.Time, wallTime string) {
 	wallTimeInt, _ := strconv.ParseInt(wallTime, 10, 64)
@@ -594,7 +588,7 @@ func (p *MockProvider) capacity() v1.ResourceList {
 
 	// set memoryQuantity as totalMemoryStr
 	memoryQuantity := resource.MustParse(totalMemoryStr)
-	
+
 	// make memoryQuantity in the unit of KiB
 	// Set a static quantity for pods
 	podsQuantity := resource.MustParse("1000")
@@ -759,7 +753,6 @@ func (p *MockProvider) GetStatsSummary(ctx context.Context) (*stats.Summary, err
 	return res, nil
 }
 
-
 func (p *MockProvider) getMetricType(metricName string) *dto.MetricType {
 	var (
 		dtoCounterMetricType = dto.MetricType_COUNTER
@@ -778,68 +771,68 @@ func (p *MockProvider) getMetricType(metricName string) *dto.MetricType {
 }
 
 func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFamily, error) {
-    // Start a new span for tracing
-    ctx, span := trace.StartSpan(ctx, "GetMetricsResource")
-    defer span.End()
+	// Start a new span for tracing
+	ctx, span := trace.StartSpan(ctx, "GetMetricsResource")
+	defer span.End()
 
-    // Define label names
-    var (
-        nodeNameLabel      = "node"
-        podNameLabel       = "pod"
-        containerNameLabel = "container"
-        namespaceLabel     = "namespace"
-        pgidLabel          = "pgid"
-    )
+	// Define label names
+	var (
+		nodeNameLabel      = "node"
+		podNameLabel       = "pod"
+		containerNameLabel = "container"
+		namespaceLabel     = "namespace"
+		pgidLabel          = "pgid"
+	)
 
-    // Create node labels
-    nodeLabels := []*dto.LabelPair{
-        {
-            Name:  &nodeNameLabel,
-            Value: &p.nodeName,
-        },
-    }
+	// Create node labels
+	nodeLabels := []*dto.LabelPair{
+		{
+			Name:  &nodeNameLabel,
+			Value: &p.nodeName,
+		},
+	}
 
-    // Generate node metrics
-    metricsMap := p.generateNodeMetrics(ctx, nil, nodeNameLabel, nodeLabels)
+	// Generate node metrics
+	metricsMap := p.generateNodeMetrics(ctx, nil, nodeNameLabel, nodeLabels)
 
-    // Iterate over pods to generate pod and container metrics
-    for _, pod := range p.pods {
+	// Iterate over pods to generate pod and container metrics
+	for _, pod := range p.pods {
 		// iterate only running pods
 		if pod.Status.Phase != v1.PodRunning {
 			continue
 		}
-	
-        podLabels := []*dto.LabelPair{
-            {Name: &nodeNameLabel, Value: &p.nodeName},
-            {Name: &podNameLabel, Value: &pod.Name},
-            {Name: &namespaceLabel, Value: &pod.Namespace},
-        }
 
-        metricsMap, pgidMap := p.generatePodMetrics(ctx, pod, metricsMap, podNameLabel, podLabels)
+		podLabels := []*dto.LabelPair{
+			{Name: &nodeNameLabel, Value: &p.nodeName},
+			{Name: &podNameLabel, Value: &pod.Name},
+			{Name: &namespaceLabel, Value: &pod.Namespace},
+		}
 
-        // Iterate over containers in the pod
-        for _, container := range pod.Spec.Containers {
+		metricsMap, pgidMap := p.generatePodMetrics(ctx, pod, metricsMap, podNameLabel, podLabels)
+
+		// Iterate over containers in the pod
+		for _, container := range pod.Spec.Containers {
 			containerName := container.Name
-            // Skip if container state is terminated
-            if status := getContainerStatus(pod, container.Name); status != nil && status.State.Terminated != nil {
-                continue
-            }
+			// Skip if container state is terminated
+			if status := getContainerStatus(pod, container.Name); status != nil && status.State.Terminated != nil {
+				continue
+			}
 
-            // Create container labels
-            pgidLabelStr := strconv.Itoa(pgidMap[container.Name])
-            containerLabels := []*dto.LabelPair{
-                {Name: &nodeNameLabel, Value: &p.nodeName},
-                {Name: &namespaceLabel, Value: &pod.Namespace},
-                {Name: &podNameLabel, Value: &pod.Name},
-                {Name: &containerNameLabel, Value: &containerName},
-                {Name: &pgidLabel, Value: &pgidLabelStr},
-            }
+			// Create container labels
+			pgidLabelStr := strconv.Itoa(pgidMap[container.Name])
+			containerLabels := []*dto.LabelPair{
+				{Name: &nodeNameLabel, Value: &p.nodeName},
+				{Name: &namespaceLabel, Value: &pod.Namespace},
+				{Name: &podNameLabel, Value: &pod.Name},
+				{Name: &containerNameLabel, Value: &containerName},
+				{Name: &pgidLabel, Value: &pgidLabelStr},
+			}
 
-            // Generate container metrics
+			// Generate container metrics
 			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
-            metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
-        }
-    }
+			metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
+		}
+	}
 
 	// Convert metrics map to slice of metric families
 	res := []*dto.MetricFamily{}
@@ -931,20 +924,19 @@ func addAttributes(ctx context.Context, span trace.Span, attrs ...string) contex
 	return ctx
 }
 
-
 func filterContainersByPgid(pod *v1.Pod, pgidMap map[string]int) []v1.Container {
-    var filteredContainers []v1.Container
-    seenPgid := make(map[int]bool)
+	var filteredContainers []v1.Container
+	seenPgid := make(map[int]bool)
 
-    for _, container := range pod.Spec.Containers {
-        pgid, ok := pgidMap[container.Name]
-        if ok && !seenPgid[pgid] {
-            filteredContainers = append(filteredContainers, container)
-            seenPgid[pgid] = true
-        }
-    }
+	for _, container := range pod.Spec.Containers {
+		pgid, ok := pgidMap[container.Name]
+		if ok && !seenPgid[pgid] {
+			filteredContainers = append(filteredContainers, container)
+			seenPgid[pgid] = true
+		}
+	}
 	log.G(context.Background()).Infof("filteredContainers: %v", filteredContainers)
-    return filteredContainers
+	return filteredContainers
 }
 
 // get container status from the container name
