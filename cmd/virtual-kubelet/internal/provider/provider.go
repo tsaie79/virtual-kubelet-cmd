@@ -4,7 +4,7 @@ import (
 	"context"
 
 	// "github.com/virtual-kubelet/virtual-kubelet/node/nodeutil"
-	"github.com/virtual-kubelet-cmd/node/nodeutil"
+	"github.com/virtual-kubelet-cmd/cmd/virtual-kubelet/internal/node/nodeutil"
 	v1 "k8s.io/api/core/v1"
 )
 
