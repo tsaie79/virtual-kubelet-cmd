@@ -1,3 +1,31 @@
+# Configuration for starting virtual-kubelet
+For example, the `start.sh` script is used to start the `virtual-kubelet` with the following environment variables:
+```bash
+#!/bin/bash
+export MAIN="/workspaces/virtual-kubelet-cmd"
+export VK_PATH="$MAIN/test-run/apiserver"
+export VK_BIN="$MAIN/bin"
+
+# the following environment variables are used to define the apiserver
+export APISERVER_CERT_LOCATION="$VK_PATH/client.crt"
+export APISERVER_KEY_LOCATION="$VK_PATH/client.key"
+export KUBECONFIG="$HOME/.kube/config"
+
+# the following environment variables are used to define the virtual-kubelet node
+export NODENAME="vk"
+export VKUBELET_POD_IP="172.17.0.1" # the ip of the apiserver, if the apiserver is running in the docker container, the ip should be the ip of the docker0
+export KUBELET_PORT="10255" # this port is used to communicate with the apiserver
+
+# the following environment variables are used to define the affinity of the virtual-kubelet nodes
+export JIRIAF_WALLTIME="60" 
+export JIRIAF_NODETYPE="cpu"
+export JIRIAF_SITE="Local"
+
+# the command to start the virtual-kubelet
+"$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --klog.v 3 > ./$NODENAME.log 2>&1 
+```
+
+
 # Enhancements in this Branch
 This branch introduces the following enhancements:
 - [x] Enables the use of `configMap` and `secret` as volume types for script storage during pod launch.
