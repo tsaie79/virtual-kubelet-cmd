@@ -27,7 +27,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 	// Iterate over each volume mount in the container
 	for _, volumeMount := range container.VolumeMounts {
 		defaultVolumeDirectory := volumeMap[volumeMount.Name]
-		mountDirectory := path.Join(os.Getenv("HOME"), podName, "containers", volumeMount.MountPath)
+		mountDirectory := path.Join(os.Getenv("HOME"), podName, "containers", container.Name, volumeMount.MountPath)
 
 		log.G(ctx).WithField("volume name", volumeMount.Name).WithField("mount directory", mountDirectory).Info("Processing volumeMount")
 
