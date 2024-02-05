@@ -354,7 +354,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			}
 
 			// Delete the pgid file
-			// pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
 			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", containerStatus.Name, "pgid")
 			err = os.Remove(pgidFile)
 			if err != nil {
@@ -830,7 +829,6 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 			}
 
 			// Generate container metrics
-			// pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
 			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
 			metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
 		}
