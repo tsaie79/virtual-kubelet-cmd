@@ -201,17 +201,17 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	// Create a dir to store the pgid of each container at $HOME/.pgid
-	pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
-	if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
-		err := os.Mkdir(pgidDir, 0700)
-		if err != nil {
-			log.G(ctx).WithField("err", err).Error("Failed to create pgid dir")
-			return err
-		}
-	}
+	// pgidDir := path.Join(os.Getenv("HOME"), ".pgid")
+	// if _, err := os.Stat(pgidDir); os.IsNotExist(err) {
+	// 	err := os.Mkdir(pgidDir, 0700)
+	// 	if err != nil {
+	// 		log.G(ctx).WithField("err", err).Error("Failed to create pgid dir")
+	// 		return err
+	// 	}
+	// }
 
 	// Run scripts in parallel and collect container statuses and errors
-	_, containerStatusChan := p.runScriptParallel(ctx, pod, volumes, pgidDir)
+	_, containerStatusChan := p.runScriptParallel(ctx, pod, volumes)
 	for containerStatus := range containerStatusChan {
 		pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, containerStatus)
 	}
@@ -354,7 +354,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			}
 
 			// Delete the pgid file
-			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
+			// pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, containerStatus.Name))
+			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", containerStatus.Name, "pgid")
 			err = os.Remove(pgidFile)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to delete pgid file: %w", err)
@@ -829,7 +830,8 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 			}
 
 			// Generate container metrics
-			pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+			// pgidFile := path.Join(os.Getenv("HOME"), ".pgid", fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
 			metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
 		}
 	}

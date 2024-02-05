@@ -82,7 +82,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 	return scriptMap, nil, nil
 }
 
-func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volumeMap map[string]string, pgidDir string) (chan error, chan v1.ContainerStatus) {
+func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volumeMap map[string]string) (chan error, chan v1.ContainerStatus) {
 	var wg sync.WaitGroup
 	errorChannel := make(chan error, len(pod.Spec.Containers))
 	containerStatusChannel := make(chan v1.ContainerStatus, len(pod.Spec.Containers))
@@ -126,7 +126,10 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			}
 
 			// Write the process group ID to a file
-			pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
+
+			pgidDir := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name)
+			pgidFile := path.Join(pgidDir, "pgid")
+			// pgidFile := path.Join(pgidDir, fmt.Sprintf("%s_%s_%s.pgid", pod.Namespace, pod.Name, container.Name))
 			log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
 			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
 			if err != nil {
