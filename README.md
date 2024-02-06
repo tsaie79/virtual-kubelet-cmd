@@ -1,5 +1,5 @@
-# Configuration for starting virtual-kubelet
-For example, the `start.sh` script is used to start the `virtual-kubelet` with the following environment variables:
+# Configuration for starting virtual-kubelet-cmd
+For example, the `start.sh` script is used to start the VK with the following environment variables:
 ```bash
 #!/bin/bash
 export MAIN="/workspaces/virtual-kubelet-cmd"
@@ -11,33 +11,32 @@ export APISERVER_CERT_LOCATION="$VK_PATH/client.crt"
 export APISERVER_KEY_LOCATION="$VK_PATH/client.key"
 export KUBECONFIG="$HOME/.kube/config"
 
-# the following environment variables are used to define the virtual-kubelet node
+# the following environment variables are used to define the VK node
 export NODENAME="vk"
 export VKUBELET_POD_IP="172.17.0.1" # the ip of the apiserver, if the apiserver is running in the docker container, the ip should be the ip of the docker0
 export KUBELET_PORT="10255" # this port is used to communicate with the apiserver
 
-# the following environment variables are used to define the affinity of the virtual-kubelet nodes
+# the following environment variables are used to define the affinity of the VK nodes
 export JIRIAF_WALLTIME="60" 
 export JIRIAF_NODETYPE="cpu"
 export JIRIAF_SITE="Local"
 
-# the command to start the virtual-kubelet
+# the command to start the VK
 "$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --klog.v 3 > ./$NODENAME.log 2>&1 
 ```
 
 
-# Enhancements in this Branch
-This branch introduces the following enhancements:
-- [x] Enables the use of `configMap` and `secret` as volume types for script storage during pod launch.
-- [x] Implements `volumes` in the pod to manage the usage of `configMap` and `secret`.
-- [x] Employs `volumeMounts` to relocate scripts to the `mountPath`.
-- [x] Utilizes `command` and `args` for script execution.
-- [x] Supports `env` for passing environment variables to the scripts within a container.
+# Features of the branch
+- Enables the use of `configMap` and `secret` as volume types for script storage during pod launch.
+- Implements `volumes` in the pod to manage the usage of `configMap` and `secret`.
+- Employs `volumeMounts` to relocate scripts to the `mountPath`.
+- Utilizes `command` and `args` for script execution.
+- Supports `env` for passing environment variables to the scripts within a container.
 
 
 # Use configMap as volume type for script storage
-- The goal is to use `configMap` to define the user's job and support scripts. Any `configMap` in `volumes` will be created as a script by the vk. The location of the script is defined by the `mountPath` in `volumeMounts`.
-- The root path of the `mountPath` is `$HOME/$podName/containers/$containerName`.
+- Any `configMap` in `volumes` will be created as a script by the vk. Then, it will be copied to the `mountPath` in the container.
+- Root path of the `mountPath` is `$HOME/$podName/containers/$containerName`.
 
 # Run the scripts in the container
 - The `image` has the same name as the name in the one of the `volumeMounts` in the container.
@@ -76,8 +75,8 @@ spec:
         name: direct-stress
 ```
 
-# Run pod with virtual-kubelet nodes
-- To run pod with `virtual-kubelet` nodes, the labels in `nodeSelector` and `tolerations` are required. 
+# Run pod with VK nodes
+- To run pod with VK nodes, the labels in `nodeSelector` and `tolerations` are required. 
 ```yaml
 nodeSelector:
     kubernetes.io/role: agent
@@ -87,7 +86,7 @@ tolerations:
     effect: "NoSchedule"
 ```
 
-# Affinity for pods in virtual-kubelet nodes
+# Affinity for pods in VK nodes
 - `jiriaf.nodetype`, `jiriaf.site`, and `jiriaf.alivetime` are used to define the affinity of the virtual-kubelet nodes. These labels are defined as the environment variables `JIRIAF_NODETYPE`, `JIRIAF_SITE`, and `JIRIAF_WALLTIME` in the `start.sh` script. 
 - Notice that if `JIRIAF_WALLTIME` is set to `0`, the `jiriaf.alivetime` will not be defined and the affinity will not be used.
 
@@ -111,17 +110,16 @@ tolerations:
             - "10"
 ```
 
-
+- To add more labels to the VK nodes, modify `ConfigureNode` in `internal/provider/mock/mock.go`.
 
 
 # Key scripts
 The main control of the vk is in the following files:
-- cmd/virtual-kubelet/internal/provider/mock/mock.go
-- cmd/virtual-kubelet/internal/provider/mock/command.go
-- cmd/virtual-kubelet/internal/provider/mock/volume.go
+- `internal/provider/mock/mock.go`
+- `internal/provider/mock/command.go`
+- `internal/provider/mock/volume.go`
 
 
 # References
 - [virtual-kubelet](https://github.com/virtual-kubelet/virtual-kubelet)
 - [systemk](https://github.com/virtual-kubelet/systemk)
-- [virtual-kubelet-cmd](https://github.com/tsaie79/virtual-kubelet-cmd)
