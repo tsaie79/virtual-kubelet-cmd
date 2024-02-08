@@ -41,6 +41,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 					Message:    fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err),
 					FinishedAt: metav1.NewTime(time.Now()),
 					Reason:     "ContainerCreatingError",
+					ExitCode: 1,
 					StartedAt:  startTime,
 				},
 			}
@@ -67,6 +68,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 						Message:    fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err),
 						FinishedAt: metav1.NewTime(time.Now()),
 						Reason:     "ContainerCreatingError",
+						ExitCode: 1,
 						StartedAt:  startTime,
 					},
 				}
@@ -137,6 +139,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 						Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
 						FinishedAt: metav1.NewTime(time.Now()),
 						Reason:     "ContainerCreatingError",
+						ExitCode: 1,
 						StartedAt:  startTime,
 					},
 				}
