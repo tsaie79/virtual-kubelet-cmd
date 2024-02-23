@@ -1,4 +1,21 @@
 # Configuration for starting virtual-kubelet-cmd
+## Environment variables
+| Environment Variable      | Description |
+| ----------- | ----------- |
+| `MAIN`      | Main workspace directory       |
+| `VK_PATH`   | Path to the directory containing the apiserver files     |
+| `VK_BIN`    | Path to the binary files       |
+| `APISERVER_CERT_LOCATION`| Location of the apiserver certificate |
+| `APISERVER_KEY_LOCATION` | Location of the apiserver key |
+| `KUBECONFIG` | Path to the kubeconfig file |
+| `NODENAME` | Name of the VK node |
+| `VKUBELET_POD_IP` | IP of the apiserver. If the apiserver is running in a Docker container, this should be the IP of `docker0` |
+| `KUBELET_PORT` | Port used for communication with the apiserver |
+| `JIRIAF_WALLTIME` | Walltime for the VK nodes |
+| `JIRIAF_NODETYPE` | Node type for the VK nodes |
+| `JIRIAF_SITE` | Site for the VK nodes |
+
+
 For example, the `start.sh` script is used to start the VK with the following environment variables:
 ```bash
 #!/bin/bash
@@ -111,6 +128,18 @@ tolerations:
 ```
 
 - To add more labels to the VK nodes, modify `ConfigureNode` in `internal/provider/mock/mock.go`.
+
+# Metrics Server Deployment
+
+The Metrics Server is a tool that collects and provides resource usage data for nodes and pods within a Kubernetes cluster. The necessary deployment configuration is located in the `metrics-server/components.yaml` file.
+
+To deploy the Metrics Server, execute the following command:
+
+```bash
+kubectl apply -f metrics-server/components.yaml
+```
+
+
 
 
 # Key scripts
