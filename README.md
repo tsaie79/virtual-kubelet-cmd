@@ -7,14 +7,13 @@
 | `VK_BIN`    | Path to the binary files       |
 | `APISERVER_CERT_LOCATION`| Location of the apiserver certificate |
 | `APISERVER_KEY_LOCATION` | Location of the apiserver key |
-| `KUBECONFIG` | Path to the kubeconfig file |
-| `NODENAME` | Name of the VK node |
-| `VKUBELET_POD_IP` | IP of the apiserver. If the apiserver is running in a Docker container, this should be the IP of `docker0` |
-| `KUBELET_PORT` | Port used for communication with the apiserver |
-| `JIRIAF_WALLTIME` | Walltime for the VK nodes |
-| `JIRIAF_NODETYPE` | Node type for the VK nodes |
-| `JIRIAF_SITE` | Site for the VK nodes |
-
+| `NODENAME` | The name of the node in the Kubernetes cluster. |
+| `KUBECONFIG` | Points to the location of the Kubernetes configuration file, which is used to connect to the Kubernetes API server. By default, it's located at `$HOME/.kube/config`. |
+| `VKUBELET_POD_IP` | The IP address of the VK that metrics server talks to. If the metrics server is running in a Docker container and VK is running on the same host, this is typically the IP address of the `docker0` interface. |
+| `KUBELET_PORT` | The port on which the Kubelet service is running. The default port for Kubelet is 10250. This is for the metrics server and should be unique for each node. |
+| `JIRIAF_WALLTIME` | Sets a limit on the total time that a node can run. It should be a multiple of 60 and is measured in seconds. If it's set to 0, there is no time limit. |
+| `JIRIAF_NODETYPE` | Specifies the type of node that the job will run on. This is just for labeling purposes and doesn't affect the actual job. |
+| `JIRIAF_SITE` | Used to specify the site where the job will run. This is just for labeling purposes and doesn't affect the actual job. |
 
 For example, the `start.sh` script is used to start the VK with the following environment variables:
 ```bash
