@@ -127,7 +127,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		cfg.NodeSpec.Status.NodeInfo.Architecture = runtime.GOARCH
 		cfg.NodeSpec.Status.NodeInfo.OperatingSystem = c.OperatingSystem
 
-		cfg.HTTPListenAddr = apiConfig.Addr
+		cfg.HTTPListenAddr = apiConfig.MetricsAddr
 		cfg.StreamCreationTimeout = apiConfig.StreamCreationTimeout
 		cfg.StreamIdleTimeout = apiConfig.StreamIdleTimeout
 		cfg.DebugHTTP = true
@@ -144,6 +144,8 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		),
 		nodeutil.AttachProviderRoutes(mux),
 	)
+
+
 	if err != nil {
 		return err
 	}
