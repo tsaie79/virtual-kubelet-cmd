@@ -24,7 +24,7 @@ type apiServerConfig struct {
 	CertPath              string
 	KeyPath               string
 	CACertPath            string
-	Addr                  string
+	// Addr                  string
 	MetricsAddr           string
 	StreamIdleTimeout     time.Duration
 	StreamCreationTimeout time.Duration
@@ -37,8 +37,10 @@ func getAPIConfig(c Opts) (*apiServerConfig, error) {
 		CACertPath: os.Getenv("APISERVER_CA_CERT_LOCATION"),
 	}
 
-	config.Addr = fmt.Sprintf(":%d", c.ListenPort)
-	config.MetricsAddr = c.MetricsAddr
+	// config.Addr = fmt.Sprintf(":%d", c.ListenPort)
+	// config.MetricsAddr = c.MetricsAddr
+	// define the metrics address = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
+	config.MetricsAddr = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
 	config.StreamIdleTimeout = c.StreamIdleTimeout
 	config.StreamCreationTimeout = c.StreamCreationTimeout
 
