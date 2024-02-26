@@ -33,20 +33,11 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 
 		// Scan the default volume directory for files
 		files, err := ioutil.ReadDir(defaultVolumeDirectory)
-		if err != nil {
-			log.G(ctx).WithField("default volume directory", defaultVolumeDirectory).Errorf("Failed to read default volume directory; error: %v", err)
-			
-			containerState = &v1.ContainerState{
-				Terminated: &v1.ContainerStateTerminated{
-					Message:    fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err),
-					FinishedAt: metav1.NewTime(time.Now()),
-					Reason:     "containerStartError",
-					ExitCode: 1,
-					StartedAt:  startTime,
-				},
-			}
+		if err != nil {		
+			containerState = handleCollectScriptsError(ctx, *container, fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err), "readDefaultVolDirError", err, startTime)
 			return nil, containerState, err
 		}
+
 
 		// Iterate over each file in the default volume directory
 		for _, file := range files {
@@ -61,17 +52,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 			// Copy the file to the mount directory
 			err := copyFile(ctx, defaultVolumeDirectory, mountDirectory, file.Name())
 			if err != nil {
-				log.G(ctx).WithField("File name", file.Name()).Errorf("Failed to copy file; error: %v", err)
-
-				containerState = &v1.ContainerState{
-					Terminated: &v1.ContainerStateTerminated{
-						Message:    fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err),
-						FinishedAt: metav1.NewTime(time.Now()),
-						Reason:     "containerStartError",
-						ExitCode: 1,
-						StartedAt:  startTime,
-					},
-				}
+				containerState = handleCollectScriptsError(ctx, *container, fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err), "copyFileError", err, startTime)
 				return nil, containerState, err
 			}
 
@@ -138,8 +119,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 					Terminated: &v1.ContainerStateTerminated{
 						Message:    fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err),
 						FinishedAt: metav1.NewTime(time.Now()),
-						Reason:     "containerStartError",
-						ExitCode: 1,
+						Reason:     "writePgidError",
+						ExitCode: 10,
 						StartedAt:  startTime,
 					},
 				}
@@ -221,24 +202,24 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 	// Start the command
 	err := cmd.Start()
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, 0, "cmd.Start() failed", startTime)
+		return handleRunCmdError(ctx, cmd, err, 0, "cmd.Start() failed", startTime, "cmdStartError")
 	}
 
 	// Get the process group id
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, 0, "failed to get pgid", startTime)
+		return handleRunCmdError(ctx, cmd, err, 0, "failed to get pgid", startTime, "getPgidError")
 	}
 
 
 	// write the stdout and stderr to files without waiting for the command to finish
 	stdoutFile, err := os.Create(path.Join(stdoutPath, "stdout"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, pgid, "failed to create stdout file", startTime)
+		return handleRunCmdError(ctx, cmd, err, pgid, "failed to create stdout file", startTime, "createStdoutFileError")
 	}
 	stderrFile, err := os.Create(path.Join(stdoutPath, "stderr"))
 	if err != nil {
-		return handleCommandStartError(ctx, cmd, err, pgid, "failed to create stderr file", startTime)
+		return handleRunCmdError(ctx, cmd, err, pgid, "failed to create stderr file", startTime, "createStderrFileError")
 	}
 
 	go func() {
@@ -268,7 +249,7 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 		// defer wg.Done()
 		err := cmd.Wait()
 		if err != nil {
-			pgid, state, err := handleCommandStartError(ctx, cmd, err, pgid, "cmd.Wait() failed", startTime)
+			pgid, state, err := handleRunCmdError(ctx, cmd, err, pgid, "cmd.Wait() failed", startTime, "cmdWaitError")
 			resultCh <- Result{Pgid: pgid, State: state, Err: err}
 			return
 		}
@@ -322,18 +303,32 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 	return cmd
 }
 
-func handleCommandStartError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, message string, startTime metav1.Time) (int, *v1.ContainerState, error) {
+func handleRunCmdError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, message string, startTime metav1.Time, reason string) (int, *v1.ContainerState, error) {
 	log.G(ctx).WithField("command", cmd.Args).Errorf("%v, error: %v", message, err)
 	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
-			Reason:     "containerStartError",
+			Reason:     reason,
 			Message:    fmt.Sprintf("%v, error: %v", message, err.Error()),
 			StartedAt:  startTime,
 			FinishedAt: metav1.Now(),
 		},
 	}, err
 }
+
+func handleCollectScriptsError(ctx context.Context, c v1.Container, message, reason string, err error, startTime metav1.Time) *v1.ContainerState {
+	log.G(ctx).WithField("container", c.Name).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
+	return &v1.ContainerState{
+		Terminated: &v1.ContainerStateTerminated{
+			Message:    message,
+			FinishedAt: metav1.NewTime(time.Now()),
+			Reason:     reason,
+			ExitCode: 1,
+			StartedAt:  startTime,
+		},
+	}
+}
+
 
 
 func copyFile(ctx context.Context, src string, dst string, filename string) error {
