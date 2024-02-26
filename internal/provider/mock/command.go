@@ -304,7 +304,7 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 }
 
 func handleRunCmdError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, message string, startTime metav1.Time, reason string) (int, *v1.ContainerState, error) {
-	log.G(ctx).WithField("command", cmd.Args).Errorf("%v, error: %v", message, err)
+	log.G(ctx).WithField("command", cmd.Args).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
 	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
