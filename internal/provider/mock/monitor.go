@@ -338,7 +338,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	prevContainerFinishTime := make(map[string]metav1.Time)
 	prevContainerTerminatedReason := make(map[string]string)
 	prevContainerTerminatedMessage := make(map[string]string)
-	prevContainerStateStrings := make(map[string]string)
+	prevContainerStateString := make(map[string]string)
 	imageIDs := make(map[string]string)
 	pgids := make(map[string]string)
 
@@ -352,23 +352,23 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 			pgids[container.Name] = containerStatus.ContainerID
 
 			if containerStatus.State.Running != nil {
-				prevContainerStateStrings[container.Name] = "Running"
+				prevContainerStateString[container.Name] = "Running"
 				prevContainerStartTime[container.Name] = containerStatus.State.Running.StartedAt
 				prevContainerFinishTime[container.Name] = metav1.NewTime(time.Now())
 			} else if containerStatus.State.Terminated != nil {
-				prevContainerStateStrings[container.Name] = "Terminated"
+				prevContainerStateString[container.Name] = "Terminated"
 				prevContainerStartTime[container.Name] = containerStatus.State.Terminated.StartedAt
 				prevContainerFinishTime[container.Name] = containerStatus.State.Terminated.FinishedAt
 				prevContainerTerminatedReason[container.Name] = containerStatus.State.Terminated.Reason
 				prevContainerTerminatedMessage[container.Name] = containerStatus.State.Terminated.Message
 			} else {
-				prevContainerStateStrings[container.Name] = "Waiting"
+				prevContainerStateString[container.Name] = "Waiting"
 				prevContainerStartTime[container.Name] = metav1.NewTime(time.Now())
 				prevContainerFinishTime[container.Name] = metav1.NewTime(time.Now())
 			}
 
 			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
-			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateStrings, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids)
+			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateString, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids)
 			break
 		}
 	}
@@ -398,7 +398,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
-func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string) *v1.ContainerStatus {
+func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateString map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string) *v1.ContainerStatus {
 	//if prevContainerReason and prevContainerMessage are not empty, then pass them to the container status
 	if prevContainerTerminatedReason[c.Name] == "containerStartError" {
 		containerState := &v1.ContainerState{
@@ -461,7 +461,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerState 
 	processStatus := getProcessStatus(pids, pgids[c.Name], c.Name)
 
 	// Determine the container status 
-	containerStatus := determineContainerStatus(c, processStatus, pgids[c.Name], prevContainerStartTime[c.Name].Time, prevContainerFinishTime[c.Name].Time, prevContainerState[c.Name], imageIDs[c.Name], hasStderr)
+	containerStatus := determineContainerStatus(c, processStatus, pgids[c.Name], prevContainerStartTime[c.Name].Time, prevContainerFinishTime[c.Name].Time, prevContainerStateString[c.Name], imageIDs[c.Name], hasStderr)
 	return containerStatus
 }
 
