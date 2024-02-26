@@ -336,6 +336,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	containerStatuses := make([]v1.ContainerStatus, len(pod.Spec.Containers))
 	prevContainerStartTime := make(map[string]metav1.Time)
 	prevContainerFinishTime := make(map[string]metav1.Time)
+	prevContainerTerminateExitCode := make(map[string]int32)
 	prevContainerTerminatedReason := make(map[string]string)
 	prevContainerTerminatedMessage := make(map[string]string)
 	prevContainerStateString := make(map[string]string)
@@ -361,6 +362,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 				prevContainerFinishTime[container.Name] = containerStatus.State.Terminated.FinishedAt
 				prevContainerTerminatedReason[container.Name] = containerStatus.State.Terminated.Reason
 				prevContainerTerminatedMessage[container.Name] = containerStatus.State.Terminated.Message
+				prevContainerTerminateExitCode[container.Name] = containerStatus.State.Terminated.ExitCode
 			} else {
 				prevContainerStateString[container.Name] = "Waiting"
 				prevContainerStartTime[container.Name] = metav1.NewTime(time.Now())
@@ -368,10 +370,10 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 			}
 
 			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
-			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateString, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids)
+			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateString, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids, prevContainerTerminateExitCode)
 			break
 		}
-	}
+	} 
 
 	// areAllTerminated, stderrNotEmpty, getPgidError, getPidsError, getStderrFileInfoError, containerStartError := checkTerminatedContainer(pod)
 	areAllTerminated, areAllExitCodeZero := checkTerminatedContainer(pod)
@@ -398,9 +400,9 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
-func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateString map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string) *v1.ContainerStatus {
+func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateString map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string, prevContainerTerminateExitCode map[string]int32) *v1.ContainerStatus {
 	//if prevContainerReason and prevContainerMessage are not empty, then pass them to the container status
-	if prevContainerTerminatedReason[c.Name] == "containerStartError" {
+	if prevContainerTerminateExitCode[c.Name] == 1 {
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
@@ -421,7 +423,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
-				ExitCode:   1,
+				ExitCode:   2,
 				Reason:     "getPidsError",
 				Message:    "Error getting pids",
 			},
@@ -440,7 +442,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
 				FinishedAt: metav1.NewTime(time.Now()),
-				ExitCode:   1,
+				ExitCode:   2,
 				Reason:     "getStderrFileInfoError",
 				Message:    "Error getting stderr file info",
 			},
@@ -552,7 +554,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 		if hasStderr {
 			reason = "stderrNotEmpty"
 			message = "The stderr file is not empty."
-			exitCode = 1
+			exitCode = 2
 		} else {
 			reason = "Completed"
 			message = "Remaining processes are zombies"
