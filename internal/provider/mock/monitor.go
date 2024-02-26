@@ -573,7 +573,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 	return containerStatus
 }
 
-// createContainerStatus creates a container status.
+// createContainerStatus creates a container state.
 func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid string, ImageID string) *v1.ContainerStatus {
 	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
 	ready := false
