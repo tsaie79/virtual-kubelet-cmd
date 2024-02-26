@@ -465,38 +465,6 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	return containerStatus
 }
 
-// checkContainerStatus checks the status of all containers in the pod.
-// It returns true if all containers are in the "Zombie" state and if any container has "stderrNotEmpty" in its state.
-// func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, stderrNotEmpty bool, getPgidError bool, getPidsError bool, getStderrFileInfoError bool, containerStartError bool) {
-// 	terminatedContainerCounter := 0
-// 	for _, containerStatus := range pod.Status.ContainerStatuses {
-// 		if containerStatus.State.Terminated != nil {
-// 			terminatedContainerCounter++
-			
-// 			// Check if the container has "stderrNotEmpty" in its state
-// 			if containerStatus.State.Terminated.Reason == "stderrNotEmpty" {
-// 				stderrNotEmpty = true
-// 			}
-// 			// Check if the container has "getPgidError" in its state
-// 			if containerStatus.State.Terminated.Reason == "getPgidError" {
-// 				getPgidError = true
-// 			}
-// 			// Check if the container has "getPidsError" in its state
-// 			if containerStatus.State.Terminated.Reason == "getPidsError" {
-// 				getPidsError = true
-// 			}
-// 			// Check if the container has "getStderrFileInfoError" in its state
-// 			if containerStatus.State.Terminated.Reason == "getStderrFileInfoError" {
-// 				getStderrFileInfoError = true
-// 			}
-// 			if containerStatus.State.Terminated.Reason == "containerStartError" {
-// 				containerStartError = true
-// 			}
-// 		}
-// 	}
-// 	areAllTerminated = terminatedContainerCounter == len(pod.Status.ContainerStatuses)
-// 	return
-// }
 
 func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, areAllExitCodeZero bool) {
 	terminatedContainerCounter := 0
