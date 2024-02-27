@@ -63,7 +63,7 @@ The `pgid` file is a feature used to manage the process group of a shell script 
 # Lifecycle of containers and pods
 ## Description of container states
 The following tables provide a description of the container states and their associated methods.
-### CreatePod method called, the following states are used:
+### `CreatePod` method called, the following states are used:
 | UID | Stage | State | StartAt | FinishedAt | ExitCode | Reason | Message | IsError | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | create-cont-readDefaultVolDirError | CreatePod | Terminated | Start of pod | Now | 1 | readDefaultVolDirError | fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err) | Y | Scan the default volume directory for files |
@@ -76,7 +76,7 @@ The following tables provide a description of the container states and their ass
 | create-cont-writePgidError | CreatePod | Terminated | Start of pod | Now | 1 | writePgidError | fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err) | Y | Write the process group ID to a file |
 | create-cont-containerStarted | CreatePod | Running | Start of pod | nan | nan | nan | nan | N | No error; init container state |
 
-### GetPods method called, the following states are used:
+### `GetPods` method called, the following states are used:
 | UID | Stage | State | StartAt | FinishedAt | ExitCode | Reason | Message | IsError | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | get-cont-create | GetPods | Terminated | Prev | Prev | 1 | from those with ExitCode 1 | from those with ExitCode 1 | Y | Container failed to start |
@@ -103,7 +103,7 @@ The following tables provide a description of the container states and their ass
 **Note:** The method `GetPods` is called every 5 seconds to check the state of the container. The method `CreatePod` is called when the pod is created.
 
 
-## The flowchart for creating and monitoring lifecycle of containers and pods
+## The flowchart for creating and monitoring lifecycle of the containers in a pod
 These figures show how continers and pods are created and monitored in the virtual-kubelet-cmd.
 1. Any flows in the `🔄 all containers` block are looped over all containers in the pod.
 2. Blues blocks are the flows for creating container state instances.
@@ -116,18 +116,15 @@ These figures show how continers and pods are created and monitored in the virtu
 
 
 
+# Steps to Create a Pod with a Shell Script
 
+- The `image` field is defined as a shell script. This means that the `image` field corresponds to the name of `volumeMounts`.
+- Use a `configMap` to store the shell script.
+- Use `volumeMounts` to mount the script into the container.
+- The `command` and `args` fields are used to execute the script.
 
+Here's an example of how to create a pod that runs a shell script:
 
-
-
-
-
-
-
-
-
-For example, take the following `configMap.yaml` and `pod.yaml` as an example:
 ```yaml
 kind: ConfigMap
 apiVersion: v1
@@ -159,8 +156,8 @@ spec:
         name: direct-stress
 ```
 
-# Run pod with VK nodes
-- To run pod with VK nodes, the labels in `nodeSelector` and `tolerations` are required. 
+# Running Pods on Virtual Kubelet Nodes
+To schedule pods on Virtual Kubelet (VK) nodes, it's necessary to include specific labels in both `nodeSelector` and `tolerations`.
 ```yaml
 nodeSelector:
     kubernetes.io/role: agent
@@ -170,9 +167,10 @@ tolerations:
     effect: "NoSchedule"
 ```
 
-# Affinity for pods in VK nodes
-- `jiriaf.nodetype`, `jiriaf.site`, and `jiriaf.alivetime` are used to define the affinity of the virtual-kubelet nodes. These labels are defined as the environment variables `JIRIAF_NODETYPE`, `JIRIAF_SITE`, and `JIRIAF_WALLTIME` in the `start.sh` script. 
-- Notice that if `JIRIAF_WALLTIME` is set to `0`, the `jiriaf.alivetime` will not be defined and the affinity will not be used.
+# Setting Affinity for Pods on Virtual Kubelet Nodes
+- The affinity of pods for Virtual Kubelet (VK) nodes is determined by three labels: `jiriaf.nodetype`, `jiriaf.site`, and `jiriaf.alivetime`. These labels correspond to the environment variables `JIRIAF_NODETYPE`, `JIRIAF_SITE`, and `JIRIAF_WALLTIME` in the `start.sh` script.
+- Note that if `JIRIAF_WALLTIME` is set to `0`, the `jiriaf.alivetime` label will not be defined, and therefore, the affinity will not be applied.
+- To add more labels to the VK nodes, modify `ConfigureNode` in `internal/provider/mock/mock.go`.
 
 ```yaml
   affinity:
@@ -194,7 +192,6 @@ tolerations:
             - "10"
 ```
 
-- To add more labels to the VK nodes, modify `ConfigureNode` in `internal/provider/mock/mock.go`.
 
 # Metrics Server Deployment
 
@@ -205,12 +202,13 @@ To deploy the Metrics Server, execute the following command:
 ```bash
 kubectl apply -f metrics-server/components.yaml
 ```
+**Note:** The flag `--kubelet-use-node-status-port` is added to the `metrics-server` container in the `metrics-server` deployment to allow the Metrics Server to communicate with the Virtual Kubelet nodes.
 
 
 
 
-# Key scripts
-The main control of the vk is in the following files:
+# Essential Scripts
+The primary control mechanisms for the Virtual Kubelet (VK) are contained within the following files:
 - `internal/provider/mock/mock.go`
 - `internal/provider/mock/command.go`
 - `internal/provider/mock/volume.go`
