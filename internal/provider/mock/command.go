@@ -130,10 +130,15 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			}
 
 			// Send the container status to the channel
+			// containerStatusChannel <- generateContainerStatus(container, scriptPath, false, &v1.ContainerState{
+			// 	Waiting: &v1.ContainerStateWaiting{
+			// 		Message: fmt.Sprintf("container %s is waiting for the command to finish", container.Name),
+			// 		Reason:  "containerStarted",
+			// 	},
+			// }, pgid)
 			containerStatusChannel <- generateContainerStatus(container, scriptPath, false, &v1.ContainerState{
-				Waiting: &v1.ContainerStateWaiting{
-					Message: fmt.Sprintf("container %s is waiting for the command to finish", container.Name),
-					Reason:  "containerStarted",
+				Running: &v1.ContainerStateRunning{
+					StartedAt: startTime,
 				},
 			}, pgid)
 		}(container)
