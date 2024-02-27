@@ -1,21 +1,5 @@
-# Configuration for starting virtual-kubelet-cmd
-## Environment variables
-| Environment Variable      | Description |
-| ----------- | ----------- |
-| `MAIN`      | Main workspace directory       |
-| `VK_PATH`   | Path to the directory containing the apiserver files     |
-| `VK_BIN`    | Path to the binary files       |
-| `APISERVER_CERT_LOCATION`| Location of the apiserver certificate |
-| `APISERVER_KEY_LOCATION` | Location of the apiserver key |
-| `KUBECONFIG` | Points to the location of the Kubernetes configuration file, which is used to connect to the Kubernetes API server. By default, it's located at `$HOME/.kube/config`. |
-| `NODENAME` | The name of the node in the Kubernetes cluster. |
-| `VKUBELET_POD_IP` | The IP address of the VK that metrics server talks to. If the metrics server is running in a Docker container and VK is running on the same host, this is typically the IP address of the `docker0` interface. |
-| `KUBELET_PORT` | The port on which the Kubelet service is running. The default port for Kubelet is 10250. This is for the metrics server and should be unique for each node. |
-| `JIRIAF_WALLTIME` | Sets a limit on the total time that a node can run. It should be a multiple of 60 and is measured in seconds. If it's set to 0, there is no time limit. |
-| `JIRIAF_NODETYPE` | Specifies the type of node that the job will run on. This is just for labeling purposes and doesn't affect the actual job. |
-| `JIRIAF_SITE` | Used to specify the site where the job will run. This is just for labeling purposes and doesn't affect the actual job. |
-
-## Using Shell Scripts to Launch
+# Configuring Virtual-Kubelet-Cmd
+## Using Shell Scripts to Start Virtual-Kubelet-Cmd
 The `test-run/start.sh` script provides an example of how to initiate the VK. It does this by setting up specific environment variables.
 ```bash
 #!/bin/bash
@@ -37,9 +21,24 @@ export JIRIAF_SITE="Local"
 
 "$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --klog.v 3 > ./$NODENAME.log 2>&1 
 ```
+## Environment Variables
+| Environment Variable      | Description |
+| ----------- | ----------- |
+| `MAIN`      | Main workspace directory       |
+| `VK_PATH`   | Path to the directory containing the apiserver files     |
+| `VK_BIN`    | Path to the binary files       |
+| `APISERVER_CERT_LOCATION`| Location of the apiserver certificate |
+| `APISERVER_KEY_LOCATION` | Location of the apiserver key |
+| `KUBECONFIG` | Points to the location of the Kubernetes configuration file, which is used to connect to the Kubernetes API server. By default, it's located at `$HOME/.kube/config`. |
+| `NODENAME` | The name of the node in the Kubernetes cluster. |
+| `VKUBELET_POD_IP` | The IP address of the VK that metrics server talks to. If the metrics server is running in a Docker container and VK is running on the same host, this is typically the IP address of the `docker0` interface. |
+| `KUBELET_PORT` | The port on which the Kubelet service is running. The default port for Kubelet is 10250. This is for the metrics server and should be unique for each node. |
+| `JIRIAF_WALLTIME` | Sets a limit on the total time that a node can run. It should be a multiple of 60 and is measured in seconds. If it's set to 0, there is no time limit. |
+| `JIRIAF_NODETYPE` | Specifies the type of node that the job will run on. This is just for labeling purposes and doesn't affect the actual job. |
+| `JIRIAF_SITE` | Used to specify the site where the job will run. This is just for labeling purposes and doesn't affect the actual job. |
 
-# Executing Pods with Virtual-Kubelet-CMD Nodes
-Pods and their respective containers can be executed on Virtual-Kubelet-CMD (VK) nodes. The table below provides a comparison between the functionalities of a VK node and a regular kubelet:
+# Running Pods on Virtual-Kubelet-Cmd Nodes
+Pods, along with their associated containers, can be deployed on Virtual-Kubelet-Cmd (VK) nodes. The following table contrasts the capabilities of a VK node with those of a standard kubelet:
 
 | Feature | Virtual-Kubelet-CMD | Regular Kubelet |
 | ------- | ------------------- | --------------- |
@@ -116,15 +115,13 @@ These figures show how continers and pods are created and monitored in the virtu
 
 
 
-# Steps to Create a Pod with a Shell Script
-
+# Procedure to Deploy a Pod Executing a Shell Script
 - The `image` field is defined as a shell script. This means that the `image` field corresponds to the name of `volumeMounts`.
 - Use a `configMap` to store the shell script.
 - Use `volumeMounts` to mount the script into the container.
 - The `command` and `args` fields are used to execute the script.
 
 Here's an example of how to create a pod that runs a shell script:
-
 ```yaml
 kind: ConfigMap
 apiVersion: v1
@@ -194,7 +191,6 @@ tolerations:
 
 
 # Metrics Server Deployment
-
 The Metrics Server is a tool that collects and provides resource usage data for nodes and pods within a Kubernetes cluster. The necessary deployment configuration is located in the `metrics-server/components.yaml` file.
 
 To deploy the Metrics Server, execute the following command:
