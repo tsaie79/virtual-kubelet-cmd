@@ -62,16 +62,17 @@ The `pgid` file is a feature used to manage the process group of a shell script 
 # Lifecycle of containers and pods
 ## Description of container states
 The following tables provide a description of the container states and their associated methods.
+
 ### `CreatePod` method called, the following states are used:
 | UID | Stage | State | StartAt | FinishedAt | ExitCode | Reason | Message | IsError | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | create-cont-readDefaultVolDirError | CreatePod | Terminated | Start of pod | Now | 1 | readDefaultVolDirError | fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err) | Y | Scan the default volume directory for files |
 | create-cont-copyFileError | CreatePod | Terminated | Start of pod | Now | 1 | copyFileError | fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err) | Y | Copy the file to the mount directory |
-| create--cont-cmdStartError | CreatePod | Terminated | Start of pod | Now | 1 | cmdStartError | "cmd.Start() failed" | Y | The command is initiated with cmd.Start(). |
-| create-cont-getPgidError | CreatePod | Terminated | Start of pod | Now | 1 | getPgidError | "failed to get pgid" | Y | The process group id is retrieved using syscall.Getpgid(cmd.Process.Pid). |
-| create-cont-createStdoutFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStdoutFileError | "failed to create stdout file" | Y | The stdout file is created using os.Create(path.Join(stdoutPath, "stdout")). |
-| create-cont-createStderrFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStderrFileError | "failed to create stderr file" | Y | The stderr file is created using os.Create(path.Join(stdoutPath, "stderr")). |
-| create-cont-cmdWaitError | CreatePod | Terminated | Start of pod | Now | 1 | cmdWaitError | "cmd.Wait() failed" | Y | A goroutine is initiated to wait for the command to complete with cmd.Wait() |
+| create--cont-cmdStartError | CreatePod | Terminated | Start of pod | Now | 1 | cmdStartError | cmd.Start() failed | Y | The command is initiated with cmd.Start(). |
+| create-cont-getPgidError | CreatePod | Terminated | Start of pod | Now | 1 | getPgidError | failed to get pgid | Y | The process group id is retrieved using syscall.Getpgid(cmd.Process.Pid). |
+| create-cont-createStdoutFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStdoutFileError | failed to create stdout file | Y | The stdout file is created using os.Create(path.Join(stdoutPath, "stdout")). |
+| create-cont-createStderrFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStderrFileError | failed to create stderr file | Y | The stderr file is created using os.Create(path.Join(stdoutPath, "stderr")). |
+| create-cont-cmdWaitError | CreatePod | Terminated | Start of pod | Now | 1 | cmdWaitError | cmd.Wait() failed | Y | A goroutine is initiated to wait for the command to complete with cmd.Wait() |
 | create-cont-writePgidError | CreatePod | Terminated | Start of pod | Now | 1 | writePgidError | fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err) | Y | Write the process group ID to a file |
 | create-cont-containerStarted | CreatePod | Running | Start of pod | nan | nan | nan | nan | N | No error; init container state |
 
