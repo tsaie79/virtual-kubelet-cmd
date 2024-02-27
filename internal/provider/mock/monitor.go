@@ -331,7 +331,6 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 	return pgids, pgidMap, nil
 }
 
-
 func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod *v1.Pod) *v1.Pod {
 	containerStatuses := make([]v1.ContainerStatus, len(pod.Spec.Containers))
 	prevContainerStartTime := make(map[string]metav1.Time)
@@ -348,7 +347,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 			if containerStatus.Name != container.Name {
 				continue
 			}
-			
+
 			imageIDs[container.Name] = containerStatus.ImageID
 			pgids[container.Name] = containerStatus.ContainerID
 
@@ -373,7 +372,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateString, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids, prevContainerTerminateExitCode)
 			break
 		}
-	} 
+	}
 
 	// areAllTerminated, stderrNotEmpty, getPgidError, getPidsError, getStderrFileInfoError, containerStartError := checkTerminatedContainer(pod)
 	areAllTerminated, areAllExitCodeZero := checkTerminatedContainer(pod)
@@ -383,10 +382,10 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 		// 	pod.Status.Phase = v1.PodFailed
 		if !areAllExitCodeZero {
 			pod.Status.Phase = v1.PodFailed
-		}else{
+		} else {
 			pod.Status.Phase = v1.PodSucceeded
 		}
-	}else{
+	} else {
 		pod.Status.Phase = v1.PodRunning
 	}
 
@@ -397,7 +396,6 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 	return pod
 }
-
 
 // createContainerStatusFromProcessStatus creates a container status from process status.
 func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateString map[string]string, prevContainerStartTime map[string]metav1.Time, prevContainerFinishTime map[string]metav1.Time, pgidFile string, imageIDs map[string]string, prevContainerTerminatedReason map[string]string, prevContainerTerminatedMessage map[string]string, pgids map[string]string, prevContainerTerminateExitCode map[string]int32) *v1.ContainerStatus {
@@ -414,7 +412,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 		}
 		return createContainerStatus(c, containerState, pgids[c.Name], imageIDs[c.Name])
 	}
-	
+
 	// Get the process IDs (pids)
 	pids, err := process.Pids()
 	if err != nil {
@@ -462,18 +460,17 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	// Get the process status for each pid
 	processStatus := getProcessStatus(pids, pgids[c.Name], c.Name)
 
-	// Determine the container status 
+	// Determine the container status
 	containerStatus := determineContainerStatus(c, processStatus, pgids[c.Name], prevContainerStartTime[c.Name].Time, prevContainerFinishTime[c.Name].Time, prevContainerStateString[c.Name], imageIDs[c.Name], hasStderr)
 	return containerStatus
 }
-
 
 func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, areAllExitCodeZero bool) {
 	terminatedContainerCounter := 0
 	exitCodeCounter := 0
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Terminated != nil {
-			terminatedContainerCounter++	
+			terminatedContainerCounter++
 			if containerStatus.State.Terminated.ExitCode != 0 {
 				exitCodeCounter++
 			}
@@ -483,7 +480,6 @@ func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, areAllExitCod
 	areAllExitCodeZero = exitCodeCounter == 0
 	return
 }
-
 
 // getProcessStatus gets the process status for each pid.
 func getProcessStatus(pids []int32, pgid string, containerName string) []string {
@@ -533,10 +529,9 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 
 	if allZ {
 		currentContainerState = "Terminated"
-	}else{
+	} else {
 		currentContainerState = "Running"
 	}
-
 
 	// Log the transition
 	log.G(ctx).WithField("container", c.Name).Infof("Transitioning from %s to %s\n", prevContainerStateString, currentContainerState)
@@ -556,7 +551,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 			message = "The stderr file is not empty."
 			exitCode = 2
 		} else {
-			reason = "Completed"
+			reason = "completed"
 			message = "Remaining processes are zombies"
 			exitCode = 0
 		}
@@ -565,7 +560,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 				StartedAt:  metav1.NewTime(prevContainerStartTime),
 				FinishedAt: metav1.NewTime(prevContainerFinishTime),
 				ExitCode:   exitCode,
-				Reason:	 reason,
+				Reason:     reason,
 				Message:    message,
 			},
 		}
