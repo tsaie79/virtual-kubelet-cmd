@@ -61,6 +61,67 @@ The `pgid` file is a feature used to manage the process group of a shell script 
 
 
 # Lifecycle of containers and pods
+## Description of container states
+The following tables provide a description of the container states and their associated methods.
+### CreatePod method called, the following states are used:
+| UID | Stage | State | StartAt | FinishedAt | ExitCode | Reason | Message | IsError | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| create-cont-readDefaultVolDirError | CreatePod | Terminated | Start of pod | Now | 1 | readDefaultVolDirError | fmt.Sprintf("Failed to read default volume directory %s; error: %v", defaultVolumeDirectory, err) | Y | Scan the default volume directory for files |
+| create-cont-copyFileError | CreatePod | Terminated | Start of pod | Now | 1 | copyFileError | fmt.Sprintf("Failed to copy file %s to %s; error: %v", path.Join(defaultVolumeDirectory, file.Name()), path.Join(mountDirectory, file.Name()), err) | Y | Copy the file to the mount directory |
+| create--cont-cmdStartError | CreatePod | Terminated | Start of pod | Now | 1 | cmdStartError | "cmd.Start() failed" | Y | The command is initiated with cmd.Start(). |
+| create-cont-getPgidError | CreatePod | Terminated | Start of pod | Now | 1 | getPgidError | "failed to get pgid" | Y | The process group id is retrieved using syscall.Getpgid(cmd.Process.Pid). |
+| create-cont-createStdoutFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStdoutFileError | "failed to create stdout file" | Y | The stdout file is created using os.Create(path.Join(stdoutPath, "stdout")). |
+| create-cont-createStderrFileError | CreatePod | Terminated | Start of pod | Now | 1 | createStderrFileError | "failed to create stderr file" | Y | The stderr file is created using os.Create(path.Join(stdoutPath, "stderr")). |
+| create-cont-cmdWaitError | CreatePod | Terminated | Start of pod | Now | 1 | cmdWaitError | "cmd.Wait() failed" | Y | A goroutine is initiated to wait for the command to complete with cmd.Wait() |
+| create-cont-writePgidError | CreatePod | Terminated | Start of pod | Now | 1 | writePgidError | fmt.Sprintf("failed to write pgid to file %s; error: %v", pgidFile, err) | Y | Write the process group ID to a file |
+| create-cont-containerStarted | CreatePod | Running | Start of pod | nan | nan | nan | nan | N | No error; init container state |
+
+### GetPods method called, the following states are used:
+| UID | Stage | State | StartAt | FinishedAt | ExitCode | Reason | Message | IsError | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| get-cont-create | GetPods | Terminated | Prev | Prev | 1 | from those with ExitCode 1 | from those with ExitCode 1 | Y | Container failed to start |
+| get-cont-getPidsError | GetPods | Terminated | Prev | Prev | 2 | getPidsError | Error getting pids | Y | Failed to get system PIDs |
+| get-cont-getStderrFileInfoError | GetPods | Terminated | Prev | Prev | 2 | getStderrFileInfoError | Error getting stderr file info | Y | Failed to get info about stderr file of container |
+| get-cont-stderrNotEmpty | GetPods | Terminated | Prev | Prev | 3 | stderrNotEmpty | The stderr file is not empty. | N | All processes are in Z. Stderr is not empty. Container is done with errors. |
+| get-cont-completed | GetPods | Terminated | Prev | Prev | 0 | completed | Remaining processes are zombies | N | All processes are in Z. Stderr is empty. Container is done without errors. |
+| get-cont-running | GetPods | Running | Prev | nan | nan | nan | nan | N | Not all processes are in Z. Container is running. |
+
+### Field Descriptions
+| Field        | Description |
+|--------------|-------------|
+| `UID`        | A unique identifier for container state. |
+| `Stage`      | Method that container state is associated with. |
+| `State`      | State of container. |
+| `StartAt`    | Get time container started. "Prev" means time of previous state. "Now" means current time. |
+| `FinishedAt` | Get time container finished. "Prev" means time of previous state. "Now" means current time. |
+| `ExitCode`   | Exit code of container. |
+| `Reason`     | Reason for container's state. 1: Errors when "createPod" is called. 2: Errors when "getPods" is called. 3: stderr file is not empty. 0: Container is completed. |
+| `Message`    | Message associated with container's state. |
+| `IsError`    | Boolean value that indicates whether container state is an error. |
+| `Description`| Description of container's state. |
+**Note:** The method "GetPods" is called every 5 seconds to check the state of the container. The method "CreatePod" is called when the pod is created.
+
+
+## The flowchart for creating and monitoring lifecycle of containers and pods
+These figures show how continers and pods are created and monitored in the virtual-kubelet-cmd.
+1. Any flows in the "🔄 all containers" block are looped over all containers in the pod.
+2. Blues blocks are the flows for creating container state instances.
+3. Purple blocks are the flows for creating and updating the pod status instances based on the created container states and pod phase.
+4. Red blocks are the flows for re-directing the flows under various conditions.
+
+![Flowchart1](./image/Slide2.png)
+![Flowchart2](./image/Slide3.png)
+![Flowchart3](./image/Slide4.png)
+
+
+
+
+
+
+
+
+
+
 
 
 
