@@ -92,20 +92,20 @@ The following tables provide a description of the container states and their ass
 | `UID`        | A unique identifier for container state. |
 | `Stage`      | Method that container state is associated with. |
 | `State`      | State of container. |
-| `StartAt`    | Get time container started. "Prev" means time of previous state. "Now" means current time. |
-| `FinishedAt` | Get time container finished. "Prev" means time of previous state. "Now" means current time. |
+| `StartAt`    | Get time container started. `Prev` means time of previous state. `Now` means current time. |
+| `FinishedAt` | Get time container finished. `Prev` means time of previous state. `Now` means current time. |
 | `ExitCode`   | Exit code of container. |
-| `Reason`     | Reason for container's state. 1: Errors when "createPod" is called. 2: Errors when "getPods" is called. 3: stderr file is not empty. 0: Container is completed. |
+| `Reason`     | Reason for container's state. `1`: Errors when `createPod` is called. `2`: Errors when `getPods` is called. `3`: stderr file is not empty. `0`: Container is completed. |
 | `Message`    | Message associated with container's state. |
 | `IsError`    | Boolean value that indicates whether container state is an error. |
 | `Description`| Description of container's state. |
 
-**Note:** The method "GetPods" is called every 5 seconds to check the state of the container. The method "CreatePod" is called when the pod is created.
+**Note:** The method `GetPods` is called every 5 seconds to check the state of the container. The method `CreatePod` is called when the pod is created.
 
 
 ## The flowchart for creating and monitoring lifecycle of containers and pods
 These figures show how continers and pods are created and monitored in the virtual-kubelet-cmd.
-1. Any flows in the "🔄 all containers" block are looped over all containers in the pod.
+1. Any flows in the `🔄 all containers` block are looped over all containers in the pod.
 2. Blues blocks are the flows for creating container state instances.
 3. Purple blocks are the flows for creating and updating the pod status instances based on the created container states and pod phase.
 4. Red blocks are the flows for re-directing the flows under various conditions.
