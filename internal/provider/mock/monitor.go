@@ -552,7 +552,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 			exitCode = 3
 		} else {
 			reason = "completed"
-			message = "Remaining processes are zombies"
+			message = "All processes are zombies"
 			exitCode = 0
 		}
 		containerState = &v1.ContainerState{
