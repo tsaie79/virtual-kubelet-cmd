@@ -420,7 +420,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
-				FinishedAt: metav1.NewTime(time.Now()),
+				FinishedAt: prevContainerFinishTime[c.Name],
 				ExitCode:   2,
 				Reason:     "getPidsError",
 				Message:    "Error getting pids",
@@ -439,7 +439,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
-				FinishedAt: metav1.NewTime(time.Now()),
+				FinishedAt: prevContainerFinishTime[c.Name],
 				ExitCode:   2,
 				Reason:     "getStderrFileInfoError",
 				Message:    "Error getting stderr file info",
@@ -549,7 +549,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 		if hasStderr {
 			reason = "stderrNotEmpty"
 			message = "The stderr file is not empty."
-			exitCode = 2
+			exitCode = 3
 		} else {
 			reason = "completed"
 			message = "Remaining processes are zombies"
