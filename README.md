@@ -103,12 +103,15 @@ The following tables provide a description of the container states and their ass
 **Note:** The method `GetPods` is called every 5 seconds to check the state of the container. The method `CreatePod` is called when the pod is created.
 
 
-## The flowchart for creating and monitoring lifecycle of the containers in a pod
-These figures show how continers and pods are created and monitored in the virtual-kubelet-cmd.
-1. Any flows in the `🔄 all containers` block are looped over all containers in the pod.
-2. Blues blocks are the flows for creating container state instances.
-3. Purple blocks are the flows for creating and updating the pod status instances based on the created container states and pod phase.
-4. Red blocks are the flows for re-directing the flows under various conditions.
+## Flowchart for Creating and Monitoring the Lifecycle of Containers in a Pod
+The following points describe the process of creating and monitoring containers and pods in the virtual-kubelet-cmd:
+
+1. The `🔄 all containers` block indicates a loop that iterates over all containers in the pod.
+2. The blocks in blue represent the process of creating container state instances.
+3. The blocks in purple illustrate the process of creating and updating the pod status instances. This is based on the created container states and the pod phase.
+4. The blocks in red depict the process of redirecting flows under various conditions.
+
+**Note**: The Unique Identifier (UID) assigned to each container state is derived from the tables provided in the preceding section.
 
 ![Flowchart1](./image/Slide2.png)
 ![Flowchart2](./image/Slide3.png)
