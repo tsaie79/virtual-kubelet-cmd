@@ -24,7 +24,7 @@ type apiServerConfig struct {
 	CertPath              string
 	KeyPath               string
 	CACertPath            string
-	// Addr                  string
+	Addr                  string
 	MetricsAddr           string
 	StreamIdleTimeout     time.Duration
 	StreamCreationTimeout time.Duration

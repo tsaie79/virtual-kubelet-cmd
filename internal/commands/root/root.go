@@ -127,7 +127,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		cfg.NodeSpec.Status.NodeInfo.Architecture = runtime.GOARCH
 		cfg.NodeSpec.Status.NodeInfo.OperatingSystem = c.OperatingSystem
 
-		cfg.HTTPListenAddr = apiConfig.MetricsAddr
+		cfg.HTTPListenAddr = apiConfig.Addr
 		cfg.StreamCreationTimeout = apiConfig.StreamCreationTimeout
 		cfg.StreamIdleTimeout = apiConfig.StreamIdleTimeout
 		cfg.DebugHTTP = true
