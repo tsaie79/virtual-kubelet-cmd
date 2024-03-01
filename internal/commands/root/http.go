@@ -15,7 +15,7 @@
 package root
 
 import (
-	// "fmt"
+	"fmt"
 	"os"
 	"time"
 )
@@ -37,7 +37,7 @@ func getAPIConfig(c Opts) (*apiServerConfig, error) {
 		CACertPath: os.Getenv("APISERVER_CA_CERT_LOCATION"),
 	}
 
-	// config.Addr = fmt.Sprintf(":%d", c.ListenPort)
+	config.Addr = fmt.Sprintf(":%d", c.ListenPort)
 	config.MetricsAddr = c.MetricsAddr
 	// define the metrics address = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
 	// config.MetricsAddr = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
