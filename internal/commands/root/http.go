@@ -15,7 +15,7 @@
 package root
 
 import (
-	"fmt"
+	// "fmt"
 	"os"
 	"time"
 )
@@ -38,9 +38,9 @@ func getAPIConfig(c Opts) (*apiServerConfig, error) {
 	}
 
 	// config.Addr = fmt.Sprintf(":%d", c.ListenPort)
-	// config.MetricsAddr = c.MetricsAddr
+	config.MetricsAddr = c.MetricsAddr
 	// define the metrics address = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
-	config.MetricsAddr = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
+	// config.MetricsAddr = os.Getenv("VKUBELET_POD_IP") + ":" + fmt.Sprintf("%d", c.ListenPort)
 	config.StreamIdleTimeout = c.StreamIdleTimeout
 	config.StreamCreationTimeout = c.StreamCreationTimeout
 
