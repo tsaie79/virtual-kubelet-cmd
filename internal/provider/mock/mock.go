@@ -353,19 +353,12 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 			}
 
-			// Delete the pgid file
-			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", containerStatus.Name, "pgid")
-			err = os.Remove(pgidFile)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to delete pgid file: %w", err)
-				return
-			}
 
-			// Delete the volume directory
-			volumeDir := path.Join(os.Getenv("HOME"), pod.Name)
+			// Delete the pod's directory
+			volumeDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name)
 			err = os.RemoveAll(volumeDir)
 			if err != nil {
-				errCh <- fmt.Errorf("failed to delete volume directory: %w", err)
+				errCh <- fmt.Errorf("failed to delete pod directory: %w", err)
 				return
 			}
 
@@ -829,7 +822,7 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 			}
 
 			// Generate container metrics
-			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
+			pgidFile := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name, "containers", container.Name, "pgid")
 			metricsMap = p.generateContainerMetrics(ctx, &container, metricsMap, containerNameLabel, containerLabels, pgidFile)
 		}
 	}
