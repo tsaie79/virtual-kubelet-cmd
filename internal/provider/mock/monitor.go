@@ -314,7 +314,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 	// Iterate over each container in the pod
 	for _, container := range pod.Spec.Containers {
 		// Construct the path to the pgid file
-		pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
+		pgidFile := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name, "containers", container.Name, "pgid")
 
 		// Read the pgid from the file
 		pgid, err := readPgidFromFile(pgidFile)
@@ -368,7 +368,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 				prevContainerFinishTime[container.Name] = metav1.NewTime(time.Now())
 			}
 
-			pgidFile := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name, "pgid")
+			pgidFile := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name, "containers", container.Name, "pgid")
 			containerStatuses[i] = *createContainerStatusFromProcessStatus(&container, prevContainerStateString, prevContainerStartTime, prevContainerFinishTime, pgidFile, imageIDs, prevContainerTerminatedReason, prevContainerTerminatedMessage, pgids, prevContainerTerminateExitCode)
 			break
 		}
