@@ -17,7 +17,7 @@ import (
 	"io"
 )
 
-func newCollectScripts(ctx context.Context, container *v1.Container, podName string, volumeMap map[string]string) (map[string]string, *v1.ContainerState, error) {
+func newCollectScripts(ctx context.Context, container *v1.Container, podName string, volumeMap map[string]string, ns string) (map[string]string, *v1.ContainerState, error) {
 	startTime := metav1.NewTime(time.Now())
 
 	// Define a map to store the bash scripts, with the container name as the key and the list of bash scripts as the value
@@ -27,7 +27,7 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 	// Iterate over each volume mount in the container
 	for _, volumeMount := range container.VolumeMounts {
 		defaultVolumeDirectory := volumeMap[volumeMount.Name]
-		mountDirectory := path.Join(os.Getenv("HOME"), podName, "containers", container.Name, volumeMount.MountPath)
+		mountDirectory := path.Join(os.Getenv("HOME"), ns, podName, "containers", container.Name, volumeMount.MountPath)
 
 		log.G(ctx).WithField("volume name", volumeMount.Name).WithField("mount directory", mountDirectory).Info("Processing volumeMount")
 
@@ -78,7 +78,7 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			log.G(ctx).WithField("container", container.Name).Info("Starting container")
 
 			// Collect scripts for the container
-			scriptMap, containerState, err := newCollectScripts(ctx, &container, pod.Name, volumeMap)
+			scriptMap, containerState, err := newCollectScripts(ctx, &container, pod.Name, volumeMap, pod.Namespace)
 			if err != nil {
 				errorChannel <- err
 				containerStatusChannel <- generateContainerStatus(container, "", false, containerState, 0)
@@ -110,10 +110,10 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 
 			// Write the process group ID to a file
 
-			pgidDir := path.Join(os.Getenv("HOME"), pod.Name, "containers", container.Name)
+			pgidDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name, "containers", container.Name)
 			pgidFile := path.Join(pgidDir, "pgid")
 			log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
-			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d", pgid)), 0644)
+			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d\n", pgid)), 0644)
 			if err != nil {
 				containerState = &v1.ContainerState{
 					Terminated: &v1.ContainerStateTerminated{
