@@ -304,6 +304,12 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 		return envMap[s]
 	}
 	cmd.Args = append(cmd.Args, "-c", os.Expand(cmdString, expand)+" "+os.Expand(args, expand))
+	// Set the environment variables for the command
+	cmd.Env = os.Environ()
+	for k, v := range envMap {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
 	log.G(ctx).WithField("command", cmd.Args).Info("Command to be executed")
 	return cmd
 }
