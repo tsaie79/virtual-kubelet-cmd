@@ -341,13 +341,11 @@ func cleanPodEphemeralVolumes(podId string) error {
 
 func setupPaths(pod *v1.Pod, path string, s string) (string, error) {
 	// id := string(pod.ObjectMeta.UID)
-	id := pod.Name
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(varrun, id)
-	dir = filepath.Join(dir, path)
+	dir := filepath.Join(varrun, pod.Namespace, pod.Name, path)
 	if err := mkdirAllChown(dir, dirPerms, uid, gid); err != nil {
 		return "", err
 	}
