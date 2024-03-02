@@ -144,8 +144,8 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 		memoryMetricSuffix = "_memory_working_set_bytes"
 	)
 
-	// Initialize CPU and memory values
-	cpuValue, memoryValue := 0.0, 0.0
+	// Initialize CPU and memory values to a small value to avoid division by zero
+	cpuValue, memoryValue := 0.0000001, 0.0000001
 
 	// Get process group ID from container
 	pgid, err := getPgidFromPgidFile(pgidFile)
@@ -162,8 +162,8 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 	}
 
 	// Update CPU and memory values
-	cpuValue = userTime + systemTime
-	memoryValue = rss
+	cpuValue = userTime + systemTime + cpuValue
+	memoryValue = rss + memoryValue
 
 	log.G(ctx).WithField("container", c.Name).Infof("Container CPU time: %.2f, Memory usage: %.2f bytes, %.2f MB\n", cpuValue, memoryValue, memoryValue/1024/1024)
 
