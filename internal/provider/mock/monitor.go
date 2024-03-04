@@ -3,7 +3,7 @@ package mock
 import (
 	"bufio"
 	"context"
-	"fmt"
+	// "fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -86,12 +86,12 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 	}
 
 	// Update label by adding the pgidMap
-	pgidMapStr := fmt.Sprintf("%v", pgidMap)
-	pgidLabelKey := "pgidMap"
-	label = append(label, &dto.LabelPair{
-		Name:  &pgidLabelKey,
-		Value: &pgidMapStr,
-	})
+	// pgidMapStr := fmt.Sprintf("%v", pgidMap)
+	// pgidLabelKey := "pgidMap"
+	// label = append(label, &dto.LabelPair{
+	// 	Name:  &pgidLabelKey,
+	// 	Value: &pgidMapStr,
+	// })
 
 	// Get process metrics for each process group ID
 	for _, pgid := range pgids {
@@ -202,7 +202,7 @@ func addMetricToMap(metricsMap map[string][]*dto.Metric, metricName string, newM
 	if existingMetrics, ok := metricsMap[metricName]; ok {
 		metricsMap[metricName] = append(existingMetrics, newMetric)
 	} else {
-		log.G(context.Background()).Errorf("Metrics not found: %v\n", metricName)
+		// log.G(context.Background()).Errorf("Metrics not found: %v\n", metricName)
 		metricsMap[metricName] = []*dto.Metric{newMetric}
 	}
 	return metricsMap
@@ -391,6 +391,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 	pod.Status = v1.PodStatus{
 		Phase:             pod.Status.Phase,
+		PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
 		ContainerStatuses: containerStatuses,
 	}
 
@@ -551,7 +552,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 			message = "The stderr file is not empty."
 			exitCode = 3
 		} else {
-			reason = "completed"
+			reason = "Completed"
 			message = "All processes are zombies"
 			exitCode = 0
 		}
