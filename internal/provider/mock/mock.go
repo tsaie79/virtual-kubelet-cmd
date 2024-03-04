@@ -239,9 +239,11 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// pod.Status.StartTime = &startTime
 	// p.notifier(pod)
 	pod.Status.Phase = v1.PodRunning
-	pod.Status.Reason = "PodRunning"
+	pod.Status.Reason = "Running"
 	pod.Status.Message = "Pod is running"
 	pod.Status.StartTime = &startTime
+	// set pod IP
+	pod.Status.PodIP = os.Getenv("VKUBELET_POD_IP")
 	p.notifier(pod)
 
 	return nil
@@ -774,15 +776,15 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		podNameLabel       = "pod"
 		containerNameLabel = "container"
 		namespaceLabel     = "namespace"
-		pgidLabel          = "pgid"
+		// pgidLabel          = "pgid"
 	)
 
 	// Create node labels
 	nodeLabels := []*dto.LabelPair{
-		{
-			Name:  &nodeNameLabel,
-			Value: &p.nodeName,
-		},
+		// {
+		// 	Name:  &nodeNameLabel,
+		// 	Value: &p.nodeName,
+		// },
 	}
 
 	// Generate node metrics
@@ -796,12 +798,12 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 		}
 
 		podLabels := []*dto.LabelPair{
-			{Name: &nodeNameLabel, Value: &p.nodeName},
-			{Name: &podNameLabel, Value: &pod.Name},
+			// {Name: &nodeNameLabel, Value: &p.nodeName},
 			{Name: &namespaceLabel, Value: &pod.Namespace},
+			{Name: &podNameLabel, Value: &pod.Name},
 		}
 
-		metricsMap, pgidMap := p.generatePodMetrics(ctx, pod, metricsMap, podNameLabel, podLabels)
+		metricsMap, _ := p.generatePodMetrics(ctx, pod, metricsMap, podNameLabel, podLabels)
 
 		// Iterate over containers in the pod
 		for _, container := range pod.Spec.Containers {
@@ -812,13 +814,13 @@ func (p *MockProvider) GetMetricsResource(ctx context.Context) ([]*dto.MetricFam
 			}
 
 			// Create container labels
-			pgidLabelStr := strconv.Itoa(pgidMap[container.Name])
+			// pgidLabelStr := strconv.Itoa(pgidMap[container.Name])
 			containerLabels := []*dto.LabelPair{
-				{Name: &nodeNameLabel, Value: &p.nodeName},
+				// {Name: &nodeNameLabel, Value: &p.nodeName},
+				{Name: &containerNameLabel, Value: &containerName},
 				{Name: &namespaceLabel, Value: &pod.Namespace},
 				{Name: &podNameLabel, Value: &pod.Name},
-				{Name: &containerNameLabel, Value: &containerName},
-				{Name: &pgidLabel, Value: &pgidLabelStr},
+				// {Name: &pgidLabel, Value: &pgidLabelStr},
 			}
 
 			// Generate container metrics
