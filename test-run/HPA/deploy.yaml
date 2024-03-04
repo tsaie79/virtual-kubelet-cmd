@@ -1,0 +1,100 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: direct-stress
+  
+data:
+  stress.sh: |
+    #!/bin/bash
+    echo $message
+    stress --timeout $1 --cpu $2 # test memory
+
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: c
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: c
+  template:
+    metadata:
+      labels:
+        app: c
+    spec:
+      containers:
+        - name: c1
+          image: direct-stress
+          command: ["bash"]
+          args: ["300", "2"]
+          env:
+            - name: message
+              value: "Hello World"
+          volumeMounts:
+            - name: direct-stress
+              mountPath: stress/job1
+          resources:
+            limits:
+              cpu: "1m"
+              memory: "1Mi"
+            requests:
+              cpu: "1m"
+              memory: "1Mi"
+      volumes:
+        - name: direct-stress 
+          configMap:
+            name: direct-stress
+      nodeSelector:
+        kubernetes.io/role: agent
+        kubernetes.io/hostname: vk
+      tolerations:
+        - key: "virtual-kubelet.io/provider"
+          operator: "Equal"
+          value: "mock"
+          effect: "NoSchedule"
+      restartPolicy: Always
+
+
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: cpu-stress
+# spec:
+#   containers:
+#     - name: c1
+#       image: direct-stress
+#       command: ["bash"]
+#       args: ["30", "2"]
+#       env:
+#         - name: message
+#           value: "Hello World"
+#       volumeMounts:
+#         - name: direct-stress
+#           mountPath: stress/job1
+#       resources:
+#         limits:
+#           cpu: "2"
+#           memory: 1Gi
+#         requests:
+#           cpu: "2"
+#           memory: 1Gi
+  
+
+
+#   volumes:
+#     - name: direct-stress 
+#       configMap:
+#         name: direct-stress
+
+#   nodeSelector:
+#     kubernetes.io/role: agent
+#     kubernetes.io/hostname: vk
+#   tolerations:
+#     - key: "virtual-kubelet.io/provider"
+#       value: "mock"
+#       effect: "NoSchedule"
+#   restartPolicy: Never
