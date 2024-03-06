@@ -376,22 +376,40 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 
 	// areAllTerminated, stderrNotEmpty, getPgidError, getPidsError, getStderrFileInfoError, containerStartError := checkTerminatedContainer(pod)
 	areAllTerminated, areAllExitCodeZero := checkTerminatedContainer(pod)
+	podReady := v1.ConditionTrue
 	if areAllTerminated {
 		log.G(context.Background()).Info("All processes are zombies.")
 		// if stderrNotEmpty || containerStartError || getPgidError || getPidsError || getStderrFileInfoError {
 		// 	pod.Status.Phase = v1.PodFailed
 		if !areAllExitCodeZero {
 			pod.Status.Phase = v1.PodFailed
+			podReady = v1.ConditionFalse
 		} else {
 			pod.Status.Phase = v1.PodSucceeded
+			podReady = v1.ConditionFalse
 		}
 	} else {
 		pod.Status.Phase = v1.PodRunning
+		podReady = v1.ConditionTrue
 	}
-
+	
 	pod.Status = v1.PodStatus{
 		Phase:             pod.Status.Phase,
 		PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
+		Conditions:       []v1.PodCondition{
+			{
+				Type:   v1.PodScheduled,
+				Status: v1.ConditionTrue,
+			},
+			{
+				Type:   v1.PodInitialized,
+				Status: v1.ConditionTrue,
+			},
+			{
+				Type:   v1.PodReady,
+				Status: podReady,
+			},
+		},
 		ContainerStatuses: containerStatuses,
 	}
 
