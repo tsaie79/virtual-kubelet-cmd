@@ -228,6 +228,20 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		pod.Status.Reason = "AllContainersStartFailed"
 		pod.Status.Message = "All containers in the pod failed to start"
 		pod.Status.StartTime = &startTime
+		pod.Status.Conditions = []v1.PodCondition{
+			{
+				Type:               v1.PodScheduled,
+				Status:             v1.ConditionTrue,
+			},
+			{
+				Type:               v1.PodReady,
+				Status:             v1.ConditionFalse,
+			},
+			{
+				Type:               v1.PodInitialized,
+				Status:             v1.ConditionTrue,
+			},
+		}
 		p.notifier(pod)
 		return nil
 	}
@@ -244,6 +258,20 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.StartTime = &startTime
 	// set pod IP
 	pod.Status.PodIP = os.Getenv("VKUBELET_POD_IP")
+	pod.Status.Conditions = []v1.PodCondition{
+		{
+			Type:               v1.PodScheduled,
+			Status:             v1.ConditionTrue,
+		},
+		{
+			Type:               v1.PodReady,
+			Status:             v1.ConditionTrue,
+		},
+		{
+			Type:               v1.PodInitialized,
+			Status:             v1.ConditionTrue,
+		},
+	}
 	p.notifier(pod)
 
 	return nil
