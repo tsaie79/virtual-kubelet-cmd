@@ -396,18 +396,22 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	pod.Status = v1.PodStatus{
 		Phase:             pod.Status.Phase,
 		PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
+		HostIP: 		  os.Getenv("VKUBELET_POD_IP"),
 		Conditions:       []v1.PodCondition{
 			{
 				Type:   v1.PodScheduled,
 				Status: v1.ConditionTrue,
+				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 			{
 				Type:   v1.PodInitialized,
 				Status: v1.ConditionTrue,
+				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 			{
 				Type:   v1.PodReady,
 				Status: podReady,
+				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		},
 		ContainerStatuses: containerStatuses,
