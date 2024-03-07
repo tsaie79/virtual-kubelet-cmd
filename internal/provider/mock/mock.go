@@ -232,14 +232,17 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 			{
 				Type:               v1.PodScheduled,
 				Status:             v1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
 			},
 			{
 				Type:               v1.PodReady,
 				Status:             v1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
 			},
 			{
 				Type:               v1.PodInitialized,
 				Status:             v1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
 			},
 		}
 		p.notifier(pod)
@@ -258,18 +261,22 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.StartTime = &startTime
 	// set pod IP
 	pod.Status.PodIP = os.Getenv("VKUBELET_POD_IP")
+	pod.Status.HostIP = os.Getenv("VKUBELET_POD_IP")
 	pod.Status.Conditions = []v1.PodCondition{
 		{
 			Type:               v1.PodScheduled,
 			Status:             v1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
 		},
 		{
 			Type:               v1.PodReady,
 			Status:             v1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
 		},
 		{
 			Type:               v1.PodInitialized,
 			Status:             v1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
 		},
 	}
 	p.notifier(pod)
@@ -328,6 +335,7 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Phase = v1.PodUnknown
 	pod.Status.Reason = "ManuallyDeleted"
 	pod.Status.Message = "Pod has been deleted"
+	pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 
 	// Notify about the pod deletion
 	p.notifier(pod)
