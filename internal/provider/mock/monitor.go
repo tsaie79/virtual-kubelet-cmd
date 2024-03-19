@@ -342,6 +342,8 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	imageIDs := make(map[string]string)
 	pgids := make(map[string]string)
 
+	prevPodStartTime := pod.Status.StartTime
+
 	for i, container := range pod.Spec.Containers {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name != container.Name {
@@ -382,41 +384,46 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 		// if stderrNotEmpty || containerStartError || getPgidError || getPidsError || getStderrFileInfoError {
 		// 	pod.Status.Phase = v1.PodFailed
 		if !areAllExitCodeZero {
+			pod.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 			pod.Status.Phase = v1.PodFailed
 			podReady = v1.ConditionFalse
 		} else {
+			// update pod spec objectMeta DeletionTimestamp
+			pod.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+
 			pod.Status.Phase = v1.PodSucceeded
 			podReady = v1.ConditionFalse
 		}
 	} else {
 		pod.Status.Phase = v1.PodRunning
 		podReady = v1.ConditionTrue
+
 	}
-	
+
 	pod.Status = v1.PodStatus{
+		StartTime:      prevPodStartTime,
 		Phase:             pod.Status.Phase,
-		PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
-		HostIP: 		  os.Getenv("VKUBELET_POD_IP"),
+		// PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
+		// HostIP: 		  os.Getenv("VKUBELET_POD_IP"),
 		Conditions:       []v1.PodCondition{
 			{
 				Type:   v1.PodScheduled,
 				Status: v1.ConditionTrue,
-				LastTransitionTime: metav1.NewTime(time.Now()),
+				LastTransitionTime: *prevPodStartTime,
 			},
 			{
 				Type:   v1.PodInitialized,
 				Status: v1.ConditionTrue,
-				LastTransitionTime: metav1.NewTime(time.Now()),
+				LastTransitionTime: *prevPodStartTime,
 			},
 			{
 				Type:   v1.PodReady,
 				Status: podReady,
-				LastTransitionTime: metav1.NewTime(time.Now()),
+				LastTransitionTime: prevContainerStartTime[pod.Spec.Containers[0].Name],
 			},
 		},
 		ContainerStatuses: containerStatuses,
 	}
-
 	return pod
 }
 
