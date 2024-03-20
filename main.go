@@ -36,7 +36,7 @@ import (
 )
 
 var (
-	buildVersion = "N/A"
+	buildVersion = "JIRIAF"
 	buildTime    = "N/A"
 	k8sVersion   = "v1.15.2" // This should follow the version of k8s.io/kubernetes we are importing
 )
