@@ -9,6 +9,16 @@ data:
     echo $message
     stress --timeout $1 --cpu $2 # test memory
 
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: a
+  
+data:
+  stress.sh: |
+    #!/bin/bash
+    sleep 60; e
 
 ---
 
@@ -17,7 +27,7 @@ kind: Deployment
 metadata:
   name: c
 spec:
-  replicas: 1
+  # replicas: 1
   selector:
     matchLabels:
       app: c
@@ -26,11 +36,31 @@ spec:
       labels:
         app: c
     spec:
+
       containers:
+
+        # - name: c2
+        #   image: a
+        #   command: ["bash"]
+        #   args: ["300", "1"]
+        #   env:
+        #     - name: message
+        #       value: "Hello World"
+        #   volumeMounts:
+        #     - name: a
+        #       mountPath: stress/job1
+        #   resources:
+        #     requests:
+        #       cpu: "0"
+        #       memory: "7Mi"
+        #     limits:
+        #       cpu: "0"
+        #       memory: "10Mi"
+
         - name: c1
           image: direct-stress
           command: ["bash"]
-          args: ["300", "2"]
+          args: ["300", "1"]
           env:
             - name: message
               value: "Hello World"
@@ -38,13 +68,18 @@ spec:
             - name: direct-stress
               mountPath: stress/job1
           resources:
-            limits:
-              cpu: "1m"
-              memory: "1Mi"
             requests:
-              cpu: "1m"
-              memory: "1Mi"
+              cpu: "2"
+              memory: "7Mi"
+            limits:
+              cpu: "8"
+              memory: "10Mi"
+
+
       volumes:
+        - name: a
+          configMap:
+            name: a
         - name: direct-stress 
           configMap:
             name: direct-stress
