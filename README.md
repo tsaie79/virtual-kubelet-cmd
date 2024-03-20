@@ -205,6 +205,107 @@ kubectl apply -f metrics-server/components.yaml
 **Note:** The flag `--kubelet-use-node-status-port` is added to the `metrics-server` container in the `metrics-server` deployment to allow the Metrics Server to communicate with the Virtual Kubelet nodes.
 
 
+# Supporting Horizontal Pod Autoscaling (HPA) in Kubernetes
+
+## Introduction
+
+This document addresses critical insights and solutions for effectively implementing Horizontal Pod Autoscaling (HPA) in Kubernetes for VK, with a focus on ensuring that VK creates correct pod conditions, which are essential for HPA to function as intended.
+
+## Understanding Autoscaling through Code Analysis
+
+The HPA mechanism relies heavily on specific Kubernetes code to evaluate pod readiness, especially concerning CPU resource scaling. The following snippet from the [Kubernetes source code](https://github.com/kubernetes/kubernetes/blob/v1.29.3/pkg/controller/podautoscaler/replica_calculator.go#L378) illustrates this process:
+
+```go
+if resource == v1.ResourceCPU {
+    var unready bool
+    _, condition := podutil.GetPodCondition(&pod.Status, v1.PodReady)
+    if condition == nil || pod.Status.StartTime == nil {
+        unready = true
+    } else {
+        if pod.Status.StartTime.Add(cpuInitializationPeriod).After(time.Now()) {
+            unready = condition.Status == v1.ConditionFalse || metric.Timestamp.Before(condition.LastTransitionTime.Time.Add(metric.Window))
+        } else {
+            unready = condition.Status == v1.ConditionFalse && pod.Status.StartTime.Add(delayOfInitialReadinessStatus).After(condition.LastTransitionTime.Time)
+        }
+    }
+    if unready {
+        unreadyPods.Insert(pod.Name)
+        continue
+    }
+}
+```
+
+This critical piece of logic helps ensure that only ready and appropriately initialized pods are considered for scaling actions based on CPU usage.
+
+## Implementing Correct Pod Conditions
+
+For HPA to function as intended, it's crucial to correctly set pod conditions upon creation and update their status based on lifecycle events accurately.
+
+- **Pod Creation (`CreatePod`)**: The initial conditions for running and failed pods need to reflect their true state to avoid misinterpretation by the HPA logic. 
+  - `startTime` is the time when the pod was created.
+  - The `podReady` status is determined by the current phase of the pod:
+    * If a pod has failed, `podReady` is set to False.
+    * If a pod is currently running, `podReady` is set to True.
+  - The conditions of the pod are updated as follows:
+
+    ```go
+    pod.Status.Conditions = []v1.PodCondition{
+      {
+        Type:               v1.PodScheduled,
+        Status:             v1.ConditionTrue,
+        LastTransitionTime: startTime,
+      },
+      {
+        Type:               v1.PodReady,
+        Status:             podReady,
+        LastTransitionTime: startTime,
+      },
+      {
+        Type:               v1.PodInitialized,
+        Status:             v1.ConditionTrue,
+        LastTransitionTime: startTime,
+      },
+    }
+
+- **Retrieving Pods (`GetPods`)**: The operation of a pod is heavily dependent on its readiness status. This status is encapsulated by the `podReady` variable. Another significant attribute is `LastTransitionTime`, which records the time of the last status change.
+
+    * `prevPodStartTime` is equivalent to `startTime` in the `CreatePod` method. 
+    * `prevContainerStartTime[pod.Spec.Containers[0].Name]` denotes the start time of the first container in the pod. This holds true even for multiple containers, as they all initiate simultaneously.
+
+  - The `podReady` status is determined by the current phase of the pod:
+    * If a pod has either failed or succeeded, `podReady` is set to False.
+    * If a pod is currently running, `podReady` is set to True.
+
+  - The conditions of the pod are updated as follows:
+      ```go
+      Conditions: []v1.PodCondition{
+        {
+          Type:   v1.PodScheduled,
+          Status: v1.ConditionTrue,
+          LastTransitionTime: *prevPodStartTime,
+        },
+        {
+          Type:   v1.PodInitialized,
+          Status: v1.ConditionTrue,
+          LastTransitionTime: *prevPodStartTime,
+        },
+        {
+          Type:   v1.PodReady,
+          Status: podReady,
+          LastTransitionTime: prevContainerStartTime[pod.Spec.Containers[0].Name],
+        },
+      }
+      ```
+
+## Conclusion
+Understanding and implementing pod condition checks correctly is crucial for effective use of Horizontal Pod Autoscaling in Kubernetes. By ensuring accurate status and condition reporting, we can enhance the reliability and efficiency of autoscaled deployments.
+
+# Essential Scripts
+The primary control mechanisms for the Virtual Kubelet (VK) are contained within the following files:
+### Conclusion
+
+Proper implementation and understanding of pod condition checks are paramount for the effective use of Horizontal Pod Autoscaling in Kubernetes. By ensuring accurate status and condition reporting, we can improve the reliability and efficiency of autoscaled deployments.
+
 
 
 # Essential Scripts
