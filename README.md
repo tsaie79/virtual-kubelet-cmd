@@ -209,7 +209,7 @@ kubectl apply -f metrics-server/components.yaml
 
 ## Introduction
 
-This document addresses critical insights and solutions for effectively implementing Horizontal Pod Autoscaling (HPA) in Kubernetes for VK, with a focus on ensuring that VK creates correct pod conditions, which are essential for HPA to function as intended.
+This document provides essential insights and solutions for the effective implementation of Horizontal Pod Autoscaling (HPA) in Kubernetes, specifically for VK. It emphasizes the importance of VK establishing accurate pod conditions, crucial for the optimal functioning of HPA.
 
 ## Understanding Autoscaling through Code Analysis
 
