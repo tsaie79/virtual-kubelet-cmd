@@ -1,24 +1,11 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: direct-stress
-  
+  name: http-server
 data:
-  stress.sh: |
+  http-server.sh: |
     #!/bin/bash
-    echo $message
-    stress --timeout $1 --cpu $2 # test memory
-
----
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: a
-  
-data:
-  stress.sh: |
-    #!/bin/bash
-    sleep 60; e
+    $SERVER_BIN/server
 
 ---
 
@@ -36,53 +23,29 @@ spec:
       labels:
         app: c
     spec:
-
       containers:
-
-        # - name: c2
-        #   image: a
-        #   command: ["bash"]
-        #   args: ["300", "1"]
-        #   env:
-        #     - name: message
-        #       value: "Hello World"
-        #   volumeMounts:
-        #     - name: a
-        #       mountPath: stress/job1
-        #   resources:
-        #     requests:
-        #       cpu: "0"
-        #       memory: "7Mi"
-        #     limits:
-        #       cpu: "0"
-        #       memory: "10Mi"
-
         - name: c1
-          image: direct-stress
+          image: http-server
           command: ["bash"]
-          args: ["300", "1"]
+          args: [""]
           env:
-            - name: message
-              value: "Hello World"
+            - name: SERVER_BIN
+              value: ~/JIRIAF/virtual-kubelet-cmd/test-run/HPA/load
           volumeMounts:
-            - name: direct-stress
+            - name: http-server
               mountPath: stress/job1
           resources:
             requests:
-              cpu: "2"
+              cpu: "1"
               memory: "7Mi"
             limits:
               cpu: "8"
               memory: "10Mi"
 
-
       volumes:
-        - name: a
+        - name: http-server 
           configMap:
-            name: a
-        - name: direct-stress 
-          configMap:
-            name: direct-stress
+            name: http-server
       nodeSelector:
         kubernetes.io/role: agent
         kubernetes.io/hostname: vk
@@ -92,44 +55,3 @@ spec:
           value: "mock"
           effect: "NoSchedule"
       restartPolicy: Always
-
-
-# apiVersion: v1
-# kind: Pod
-# metadata:
-#   name: cpu-stress
-# spec:
-#   containers:
-#     - name: c1
-#       image: direct-stress
-#       command: ["bash"]
-#       args: ["30", "2"]
-#       env:
-#         - name: message
-#           value: "Hello World"
-#       volumeMounts:
-#         - name: direct-stress
-#           mountPath: stress/job1
-#       resources:
-#         limits:
-#           cpu: "2"
-#           memory: 1Gi
-#         requests:
-#           cpu: "2"
-#           memory: 1Gi
-  
-
-
-#   volumes:
-#     - name: direct-stress 
-#       configMap:
-#         name: direct-stress
-
-#   nodeSelector:
-#     kubernetes.io/role: agent
-#     kubernetes.io/hostname: vk
-#   tolerations:
-#     - key: "virtual-kubelet.io/provider"
-#       value: "mock"
-#       effect: "NoSchedule"
-#   restartPolicy: Never
