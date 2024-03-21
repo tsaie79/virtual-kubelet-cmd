@@ -1,6 +1,6 @@
 # Testing Upscaling and Downscaling of Pods for VK using HPA of Kubernetes
 
-This document describes the process of testing the upscaling and downscaling of pods for VK using the Horizontal Pod Autoscaler (HPA) of Kubernetes.
+This document describes the process of testing the upscaling and downscaling of pods for VK using the Horizontal Pod Autoscaler (HPA) of Kubernetes. Check the https://github.com/tsaie79/autoscaling-jiriaf for the complete code.
 
 ## Setup
 
