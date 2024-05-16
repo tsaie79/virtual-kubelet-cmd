@@ -403,7 +403,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	pod.Status = v1.PodStatus{
 		StartTime:      prevPodStartTime,
 		Phase:             pod.Status.Phase,
-		// PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
+		PodIP: 		   os.Getenv("VKUBELET_POD_IP"),
 		// HostIP: 		  os.Getenv("VKUBELET_POD_IP"),
 		Conditions:       []v1.PodCondition{
 			{
