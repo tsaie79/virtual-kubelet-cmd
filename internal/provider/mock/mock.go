@@ -260,7 +260,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	pod.Status.Message = "Pod is running"
 	pod.Status.StartTime = &startTime
 	// set pod IP
-	// pod.Status.PodIP = os.Getenv("VKUBELET_POD_IP")
+	pod.Status.PodIP = os.Getenv("VKUBELET_POD_IP")
 	// pod.Status.HostIP = os.Getenv("VKUBELET_POD_IP")
 	pod.Status.Conditions = []v1.PodCondition{
 		{
