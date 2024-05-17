@@ -1,0 +1,13 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sample-exporter3
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: sample-exporter3
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics
