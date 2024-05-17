@@ -1,0 +1,59 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: sample-exporter
+data:
+  stress.sh: |
+    #!/bin/bash
+    /workspaces/virtual-kubelet-cmd/test-run/svc/sample_exporter/sample_exporter -port $1
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sample-exporter3
+  labels:
+    app: sample-exporter3
+spec:
+  containers:
+    - name: sample-exporter
+      image: sample-exporter
+      command: ["bash"]
+      args: ["2114"]
+      ports:
+        - containerPort: 2113 # this is not nessesary but good to have
+      volumeMounts:
+        - name: sample-exporter
+          mountPath: sample-exporter
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+        requests:
+          cpu: "1"
+          memory: 1Gi
+  volumes:
+    - name: sample-exporter 
+      configMap:
+        name: sample-exporter
+  nodeSelector:
+    kubernetes.io/role: agent
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: jiriaf.nodetype
+            operator: In
+            values:
+            - "cpu"
+          - key: jiriaf.site
+            operator: In
+            values:
+            - "Local"
+  tolerations:
+    - key: "virtual-kubelet.io/provider"
+      value: "mock"
+      effect: "NoSchedule"
+  restartPolicy: Never
