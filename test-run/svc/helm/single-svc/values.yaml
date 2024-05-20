@@ -1,0 +1,11 @@
+Pod:
+  name: sample-exporter1
+Service:
+  - targetPort: 1122
+  - targetPort: 1123
+Nodes:
+  worker: mylin-worker
+Namespace: abc
+ServiceAccount: my-service-account
+
+#https://github.com/prometheus-operator/kube-prometheus/blob/main/docs/customizations/monitoring-additional-namespaces.md

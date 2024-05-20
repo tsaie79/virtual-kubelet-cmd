@@ -1,14 +1,14 @@
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
+  name: "{{ .Values.Pod.name}}"
+  namespace: monitoring
   labels:
     app.kubernetes.io/component: prometheus
     app.kubernetes.io/instance: k8s
     app.kubernetes.io/name: prometheus
     app.kubernetes.io/part-of: kube-prometheus
     app.kubernetes.io/version: 2.32.1
-  name: applications
-  namespace: monitoring
 spec:
   image: quay.io/prometheus/prometheus:v2.32.1
   nodeSelector:
@@ -22,10 +22,20 @@ spec:
     fsGroup: 2000
     runAsNonRoot: true
     runAsUser: 1000
-  serviceAccountName: prometheus-k8s
-  #serviceMonitorNamespaceSelector: {} #match all namespaces
+  serviceAccountName: {{ .Values.ServiceAccount}}
+  # serviceMonitorNamespaceSelector: {} #match all namespaces
   serviceMonitorNamespaceSelector:
     matchLabels:
-      kubernetes.io/metadata.name: default
-  serviceMonitorSelector: {} #match all servicemonitors
+      kubernetes.io/metadata.name: {{ .Values.Namespace}}
+  serviceMonitorSelector: 
+    matchLabels:
+      app: "{{ .Values.Pod.name}}"
   version: 2.32.1
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: local-storage
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,12 +1,14 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: sample-exporter3
+  name: "{{.Values.Pod.name}}"
   namespace: default
+  labels:
+    app: "{{.Values.Pod.name}}"
 spec:
   selector:
     matchLabels:
-      app: sample-exporter3
+      app: "{{.Values.Pod.name}}"
   endpoints:
   - port: http
     interval: 15s
