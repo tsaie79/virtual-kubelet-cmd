@@ -2,14 +2,14 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: create-emptydir-{{ .Values.Pod.name}}
-  namespace: {{ .Values.Namespace}}
+  namespace: {{ .Values.Pod.namespace}}
 spec:
   template:
     spec:
       containers:
       - name: my-container
         image: busybox
-        command: ['sh', '-c', 'mkdir -p /var/local-path-provisioner/{{ .Values.Pod.name}}']
+        command: ['sh', '-c', 'mkdir -p {{ .Values.PersistentVolume.path}}/{{ .Values.Pod.name}}']
         volumeMounts:
         - name: var-volume
           mountPath: /var
@@ -26,5 +26,5 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                - {{ .Values.Nodes.worker}}
+                - {{ .Values.PersistentVolume.node}}
       restartPolicy: Never

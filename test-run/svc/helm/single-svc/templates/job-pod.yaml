@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: {{ .Values.Pod.name}}
-  namespace: {{ .Values.Namespace}}
+  namespace: {{ .Values.Pod.namespace}}
   labels:
     app: {{ .Values.Pod.name}}
 spec:
@@ -42,7 +42,7 @@ spec:
   volumes:
     - name: sample-exporter 
       configMap:
-        name: "{{ .Values.Pod.name}}"
+        name: {{ .Values.Pod.name}}
   nodeSelector:
     kubernetes.io/role: agent
   affinity:

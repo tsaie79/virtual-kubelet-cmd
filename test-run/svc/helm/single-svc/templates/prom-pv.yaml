@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: "prometheus-{{ .Values.Pod.name}}"
+  name: prometheus-{{ .Values.Pod.name}}
 spec:
   capacity:
-    storage: 1Gi
+    storage: {{ .Values.PersistentVolume.size}}
   volumeMode: Filesystem
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage
   local:
-    path: /var/local-path-provisioner/{{ .Values.Pod.name}}
+    path: "{{ .Values.PersistentVolume.path}}/{{ .Values.Pod.name}}"
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -19,4 +19,4 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - {{ .Values.Nodes.worker}}
+          - {{ .Values.PersistentVolume.node}}

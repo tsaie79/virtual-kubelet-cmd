@@ -2,7 +2,7 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: {{ .Values.Pod.name}}
-  namespace: {{ .Values.Namespace}}
+  namespace: {{ .Values.Pod.namespace}}
 data:
   stress.sh: |
     #!/bin/bash
