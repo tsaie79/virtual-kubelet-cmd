@@ -1054,7 +1054,7 @@ func getUserProcesses() ([]int32, error) {
         // Create a new process instance
         proc, err := process.NewProcess(pid)
         if err != nil {
-            fmt.Println("Failed to get process:", err)
+            fmt.Println("Failed to get process", pid, ":", err)
             continue
         }
 
