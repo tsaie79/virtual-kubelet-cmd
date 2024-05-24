@@ -391,6 +391,9 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 			}
 
+			// Wait for a few seconds to allow for any orphaned processes to be created
+			time.Sleep(time.Second * 5)
+			
 			// After killing the processes, check for orphaned processes
 			pids, err = process.Pids()
 			if err != nil {
