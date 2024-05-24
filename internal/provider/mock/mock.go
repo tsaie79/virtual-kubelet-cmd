@@ -391,6 +391,40 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 			}
 
+			// After killing the processes, check for orphaned processes
+			pids, err = process.Pids()
+			if err != nil {
+				errCh <- fmt.Errorf("failed to get pids: %w", err)
+				return
+			}
+
+			// Iterate over each process ID again to check for orphaned processes
+			for _, pid := range pids {
+				// Create a new process instance
+				proc, err := process.NewProcess(pid)
+				if err != nil {
+					// errCh <- fmt.Errorf("failed to get process: %w", err)
+					continue
+				}
+
+				// Get the parent process ID (ppid)
+				ppid, err := proc.Ppid()
+				if err != nil {
+					errCh <- fmt.Errorf("failed to get ppid: %w", err)
+					return
+				}
+
+				// If the ppid is 1, then the process is orphaned
+				if ppid == 1 {
+					// Kill the process
+					err = proc.Kill()
+					if err != nil {
+						errCh <- fmt.Errorf("failed to kill process: %w", err)
+						return
+					}
+				}
+			}
+
 
 			// Delete the pod's directory
 			volumeDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name)
