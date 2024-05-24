@@ -12,7 +12,7 @@ export NODENAME="vk"
 
 export JIRIAF_WALLTIME="0" # set multiple of 60
 export JIRIAF_NODETYPE="cpu"
-export JIRIAF_SITE="Local"
+export JIRIAF_SITE="mylin"
 
 
 "$VK_BIN/virtual-kubelet" --nodename $NODENAME --provider mock --klog.v 3 > ./$NODENAME.log 2>&1 
