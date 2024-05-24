@@ -429,8 +429,15 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// If the ppid is 1, then the process is orphaned
-				fmt.Println("pid: ", pid, "ppid: ", ppid)
-				if ppid == 1 {
+				fmt.Println("pid: ", pid, "ppid: ", ppid, "pgid: ", pgid)
+				// convert pgid to int32
+				pgid, err := strconv.Atoi(pgid)
+				if err != nil {
+					errCh <- fmt.Errorf("failed to convert pgid to int32: %w", err)
+					return
+				}
+
+				if (ppid == 1) && (pid > int32(pgid)) {
 					fmt.Println("Orphaned process found: ", pid)
 					// Kill the process
 					err = proc.Kill()
