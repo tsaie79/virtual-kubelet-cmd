@@ -393,7 +393,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 
 			// Wait for a few seconds to allow for any orphaned processes to be created
 			time.Sleep(time.Second * 5)
-			
+
 			// After killing the processes, check for orphaned processes
 			pids, err = process.Pids()
 			if err != nil {
@@ -418,8 +418,9 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// If the ppid is 1, then the process is orphaned
-				fmt.Println("pid: ", pid, "ppid: ", ppid)
+				// fmt.Println("pid: ", pid, "ppid: ", ppid)
 				if ppid == 1 {
+					fmt.Println("Orphaned process found: ", pid)
 					// Kill the process
 					err = proc.Kill()
 					if err != nil {
