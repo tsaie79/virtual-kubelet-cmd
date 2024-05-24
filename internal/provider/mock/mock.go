@@ -415,6 +415,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// If the ppid is 1, then the process is orphaned
+				fmt.Println("pid: ", pid, "ppid: ", ppid)
 				if ppid == 1 {
 					// Kill the process
 					err = proc.Kill()
