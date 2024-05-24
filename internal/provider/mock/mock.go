@@ -33,6 +33,8 @@ import (
 	// "github.com/pkg/errors"
 	"os"
 	"strconv"
+
+	"os/user"
 )
 
 const (
@@ -357,11 +359,19 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			// Get the process group ID (pgid) from the container ID
 			pgid := containerStatus.ContainerID
 			// Get the list of process IDs (pids)
-			pids, err := process.Pids()
+			// pids, err := process.Pids()
+			// if err != nil {
+			// 	errCh <- fmt.Errorf("failed to get pids: %w", err)
+			// 	return
+			// }
+
+			pids, err := getUserProcesses()
 			if err != nil {
-				errCh <- fmt.Errorf("failed to get pids: %w", err)
+				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
+			fmt.Println("Get current user processes: ", pids)
+
 			// Iterate over each process ID
 			for _, pid := range pids {
 				// Create a new process instance
@@ -395,11 +405,12 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			time.Sleep(time.Second * 5)
 
 			// After killing the processes, check for orphaned processes
-			pids, err = process.Pids()
+			pids, err = getUserProcesses()
 			if err != nil {
-				errCh <- fmt.Errorf("failed to get pids: %w", err)
+				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
+			fmt.Println("Get current user processes after 1st killing: ", pids)
 
 			// Iterate over each process ID again to check for orphaned processes
 			for _, pid := range pids {
@@ -418,7 +429,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// If the ppid is 1, then the process is orphaned
-				// fmt.Println("pid: ", pid, "ppid: ", ppid)
+				fmt.Println("pid: ", pid, "ppid: ", ppid)
 				if ppid == 1 {
 					fmt.Println("Orphaned process found: ", pid)
 					// Kill the process
@@ -1017,4 +1028,48 @@ func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
 		}
 	}
 	return nil
+}
+
+
+func getUserProcesses() ([]int32, error) {
+    // Get the current user
+    currentUser, err := user.Current()
+    if err != nil {
+        return nil, fmt.Errorf("Failed to get current user: %v", err)
+    }
+
+    // Get the username of the current user
+    username := currentUser.Username
+
+    // Get a list of all process IDs
+    pids, err := process.Pids()
+    if err != nil {
+        return nil, fmt.Errorf("Failed to get process IDs: %v", err)
+    }
+
+    userPids := []int32{}
+
+    // Iterate over each process ID
+    for _, pid := range pids {
+        // Create a new process instance
+        proc, err := process.NewProcess(pid)
+        if err != nil {
+            fmt.Println("Failed to get process:", err)
+            continue
+        }
+
+        // Get the username of the process
+        procUsername, err := proc.Username()
+        if err != nil {
+            fmt.Println("Failed to get process username:", err)
+            continue
+        }
+
+        // If the process username matches the current user's username, then the process belongs to the current user
+        if procUsername == username {
+            userPids = append(userPids, pid)
+        }
+    }
+
+    return userPids, nil
 }
