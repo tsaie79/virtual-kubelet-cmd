@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-	"fmt"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
