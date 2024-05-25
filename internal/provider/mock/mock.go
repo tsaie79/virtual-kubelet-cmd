@@ -392,6 +392,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// Send a SIGSTOP signal to the process
+				fmt.Printf("Stopping process %v\n", pid)
 				err = proc.Signal(syscall.SIGSTOP)
 				if err != nil {
 					errCh <- fmt.Errorf("failed to stop process: %w", err)
@@ -399,6 +400,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 
 				// Send a SIGKILL signal to the process
+				fmt.Printf("Killing process %v\n", pid)
 				err = proc.Signal(syscall.SIGKILL)
 				if err != nil {
 					errCh <- fmt.Errorf("failed to kill process: %w", err)
