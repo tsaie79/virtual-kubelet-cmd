@@ -365,12 +365,13 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			// 	return
 			// }
 
-			pids, err := getUserProcesses()
+			pids, username, err := getUserProcesses()
 			if err != nil {
 				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
 			fmt.Println("Get current user processes: ", pids)
+			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
 
 			// Iterate over each process ID
 			for _, pid := range pids {
@@ -405,12 +406,13 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			time.Sleep(time.Second * 5)
 
 			// After killing the processes, check for orphaned processes
-			pids, err = getUserProcesses()
+			pids, username, err = getUserProcesses()
 			if err != nil {
 				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
-			fmt.Println("Get current user processes after 1st killing: ", pids)
+			fmt.Println("Get current %v user processes after 1st killing: %v", username, pids)
+			log.G(ctx).Infof("Get current %v user processes after 1st killing: %v", username, pids)
 
 			// Iterate over each process ID again to check for orphaned processes
 			for _, pid := range pids {
@@ -1038,11 +1040,11 @@ func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
 }
 
 
-func getUserProcesses() ([]int32, error) {
+func getUserProcesses() ([]int32, string, error) {
     // Get the current user
     currentUser, err := user.Current()
     if err != nil {
-        return nil, fmt.Errorf("Failed to get current user: %v", err)
+        return nil, "", fmt.Errorf("Failed to get current user: %v", err)
     }
 
     // Get the username of the current user
@@ -1051,7 +1053,7 @@ func getUserProcesses() ([]int32, error) {
     // Get a list of all process IDs
     pids, err := process.Pids()
     if err != nil {
-        return nil, fmt.Errorf("Failed to get process IDs: %v", err)
+        return nil, username, fmt.Errorf("Failed to get process IDs: %v", err)
     }
 
     userPids := []int32{}
@@ -1078,5 +1080,5 @@ func getUserProcesses() ([]int32, error) {
         }
     }
 
-    return userPids, nil
+    return userPids, username, nil
 }
