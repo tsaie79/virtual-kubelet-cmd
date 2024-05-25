@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
+	"fmt"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -257,22 +257,36 @@ func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float
 			continue
 		}
 
-		// If the process is in the target process group, accumulate its metrics
-		if processPgid == pgid {
-			// Accumulate the CPU times
-			if cpuTimes, err := p.Times(); err == nil {
-				totalUserTime += cpuTimes.User
-				totalSystemTime += cpuTimes.System
-			}
+		// Get parent process ID
+		ppid, err := getParentPid(int(pid))
+		if err != nil {
+			continue
+		}
 
-			// Accumulate the memory information
-			if memInfo, err := p.MemoryInfo(); err == nil {
-				totalRSS += float64(memInfo.RSS)
-				totalVMS += float64(memInfo.VMS)
-			}
+		// Get the process group ID (pgid) of the parent process
+		parentProcessPgid, err := syscall.Getpgid(ppid)
+		if err != nil {
+			continue
+		}
+
+		// Skip the process if it's not in the target process group
+		if processPgid != pgid && parentProcessPgid != pgid {
+			continue
+		}
+		
+		fmt.Println("pid: ", pid, "pgid: ", processPgid, "ppid: ", ppid, "parentProcessPgid: ", parentProcessPgid, "target pgid: ", pgid)
+		// Accumulate the CPU times
+		if cpuTimes, err := p.Times(); err == nil {
+			totalUserTime += cpuTimes.User
+			totalSystemTime += cpuTimes.System
+		}
+
+		// Accumulate the memory information
+		if memInfo, err := p.MemoryInfo(); err == nil {
+			totalRSS += float64(memInfo.RSS)
+			totalVMS += float64(memInfo.VMS)
 		}
 	}
-
 	return
 }
 
