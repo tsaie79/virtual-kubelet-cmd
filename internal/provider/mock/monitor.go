@@ -528,30 +528,48 @@ func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, areAllExitCod
 // getProcessStatus gets the process status for each pid.
 func getProcessStatus(pids []int32, pgid string, containerName string) []string {
 	var processStatus []string
+	// Iterate over each process ID
 	for _, pid := range pids {
+		// Create a new Process instance
 		p, err := process.NewProcess(pid)
 		if err != nil {
 			continue
 		}
 
+		// Get the process group ID of the process
 		processPgid, err := syscall.Getpgid(int(pid))
 		if err != nil {
 			continue
 		}
 
-		// convert pgid to string
-		processPgidString := strconv.Itoa(processPgid)
-		if processPgidString == pgid {
-			// if no process is found with the given pid, then p.Cmdline() returns an empty string
-			cmd, err := p.Cmdline()
-			if err != nil {
-				log.G(context.Background()).WithField("pid", pid).Error("Error getting command line:", err)
-				continue
-			}
-			status, _ := p.Status()
-			processStatus = append(processStatus, status)
-			log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
+		// Get parent process ID
+		ppid, err := getParentPid(int(pid))
+		if err != nil {
+			continue
 		}
+
+		// Get the process group ID (pgid) of the parent process
+		parentProcessPgid, err := syscall.Getpgid(ppid)
+		if err != nil {
+			continue
+		}
+
+		// convert pgid to int
+		pgid, _ := strconv.Atoi(pgid)
+
+		// Skip the process if it's not in the target process group
+		if processPgid != pgid && parentProcessPgid != pgid {
+			continue
+		}
+
+		cmd, err := p.Cmdline()
+		if err != nil {
+			log.G(context.Background()).WithField("pid", pid).Error("Error getting command line:", err)
+			continue
+		}
+		status, _ := p.Status()
+		processStatus = append(processStatus, status)
+		log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
 	}
 	return processStatus
 }
