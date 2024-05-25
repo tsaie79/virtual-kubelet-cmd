@@ -371,7 +371,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				return
 			}
 			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
-
+			fmt.Printf("Get current %v user processes: %v\n", username, pids)
 			for _, pid := range pids {
 				// Create a new process instance
 				proc, err := os.FindProcess(int(pid))
@@ -386,6 +386,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					return
 				}
 
+				fmt.Printf("Get pgid of process %v: %v, %v\n", pid, pgidInt, pgid)
 				// Skip if the process group ID doesn't match
 				if strconv.Itoa(pgidInt) != pgid {
 					continue
