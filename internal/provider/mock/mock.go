@@ -370,7 +370,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
-			fmt.Println("Get current user processes: ", pids)
 			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
 
 			for _, pid := range pids {
@@ -407,55 +406,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				}
 			}
 
-			// Wait for a few seconds to allow for any orphaned processes to be created
-			time.Sleep(time.Second * 5)
-
-			// After killing the processes, check for orphaned processes
-			pids, username, err = getUserProcesses()
-			if err != nil {
-				errCh <- fmt.Errorf("failed to get user processes: %w", err)
-				return
-			}
-			fmt.Println("Get current %v user processes after 1st killing: %v", username, pids)
-			log.G(ctx).Infof("Get current %v user processes after 1st killing: %v", username, pids)
-
-			// Iterate over each process ID again to check for orphaned processes
-			for _, pid := range pids {
-				// Create a new process instance
-				proc, err := process.NewProcess(pid)
-				if err != nil {
-					// errCh <- fmt.Errorf("failed to get process: %w", err)
-					continue
-				}
-
-				// Get the parent process ID (ppid)
-				ppid, err := proc.Ppid()
-				if err != nil {
-					errCh <- fmt.Errorf("failed to get ppid: %w", err)
-					return
-				}
-
-				// If the ppid is 1, then the process is orphaned
-				fmt.Println("pid: ", pid, "ppid: ", ppid, "pgid: ", pgid)
-				// convert pgid to int32
-				pgid, err := strconv.Atoi(pgid)
-				if err != nil {
-					errCh <- fmt.Errorf("failed to convert pgid to int32: %w", err)
-					return
-				}
-
-				if (ppid == 1) && (pid > int32(pgid)) {
-					fmt.Println("Orphaned process found: ", pid)
-					// Kill the process
-					err = proc.Kill()
-					if err != nil {
-						errCh <- fmt.Errorf("failed to kill process: %w", err)
-						return
-					}
-				}
-			}
-
-
 			// Delete the pod's directory
 			volumeDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name)
 			err = os.RemoveAll(volumeDir)
@@ -463,8 +413,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				errCh <- fmt.Errorf("failed to delete pod directory: %w", err)
 				return
 			}
-
-			//
 
 			// Update the container status
 			containerStatus.State.Terminated = &v1.ContainerStateTerminated{
