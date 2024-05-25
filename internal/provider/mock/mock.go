@@ -376,9 +376,9 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			// Iterate over each process ID
 			for _, pid := range pids {
 				// Create a new process instance
-				proc, err := process.NewProcess(pid)
+				proc, err := os.FindProcess(int(pid))
 				if err != nil {
-					// errCh <- fmt.Errorf("failed to get process: %w", err)
+					// errCh <- fmt.Errorf("failed to find process: %w", err)
 					continue
 				}
 
@@ -394,8 +394,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					continue
 				}
 
-				// Kill the process
-				err = proc.Kill()
+				// Send a SIGKILL signal to the process
+				err = proc.Signal(syscall.SIGKILL)
 				if err != nil {
 					errCh <- fmt.Errorf("failed to kill process: %w", err)
 					return
