@@ -29,7 +29,8 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 		defaultVolumeDirectory := volumeMap[volumeMount.Name]
 		mountDirectory := path.Join(os.Getenv("HOME"), ns, podName, "containers", container.Name, volumeMount.MountPath)
 
-		log.G(ctx).WithField("volume name", volumeMount.Name).WithField("mount directory", mountDirectory).Info("Processing volumeMount")
+		// log.G(ctx).WithField("volume name", volumeMount.Name).WithField("mount directory", mountDirectory).Info("Processing volumeMount")
+		log.G(ctx).WithFields(log.Fields{"container": container.Name, "volume_name": volumeMount.Name, "mount_directory": mountDirectory}).Info("Container status")
 
 		// Scan the default volume directory for files
 		files, err := ioutil.ReadDir(defaultVolumeDirectory)
@@ -41,11 +42,13 @@ func newCollectScripts(ctx context.Context, container *v1.Container, podName str
 
 		// Iterate over each file in the default volume directory
 		for _, file := range files {
-			log.G(ctx).WithField("File name", file.Name()).Info("File in default volume directory")
+			// log.G(ctx).WithField("File name", file.Name()).Info("File in default volume directory")
+			log.G(ctx).WithFields(log.Fields{"container": container.Name, "file_name": file.Name(), "message": "File in default volume directory"}).Info("Container status")
 
 			// If the file name contains "crt", "key", or "pem", skip it
 			if strings.Contains(file.Name(), "crt") || strings.Contains(file.Name(), "key") || strings.Contains(file.Name(), "pem") {
-				log.G(ctx).WithField("file_name", file.Name()).Info("File name contains crt, key, or pem, skipping it")
+				// log.G(ctx).WithField("file_name", file.Name()).Info("File name contains crt, key, or pem, skipping it")
+				log.G(ctx).WithFields(log.Fields{"container": container.Name, "file_name": file.Name(), "message": "File name contains crt, key, or pem, skipping it"}).Info("Container status")
 				continue
 			}
 
@@ -75,7 +78,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 		wg.Add(1)
 		go func(container v1.Container) {
 			defer wg.Done()
-			log.G(ctx).WithField("container", container.Name).Info("Starting container")
+			// log.G(ctx).WithField("container", container.Name).Info("Starting container")
+			log.G(ctx).WithFields(log.Fields{"container": container.Name, "message": "Starting container"}).Info("Container status")
 
 			// Collect scripts for the container
 			scriptMap, containerState, err := newCollectScripts(ctx, &container, pod.Name, volumeMap, pod.Namespace)
@@ -89,7 +93,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 			scriptPath := scriptMap[container.Image]
 			command := container.Command
 			if len(command) == 0 {
-				log.G(ctx).WithField("container", container.Name).Errorf("No command found for container")
+				// log.G(ctx).WithField("container", container.Name).Errorf("No command found for container")
+				log.G(ctx).WithFields(log.Fields{"container": container.Name, "message": "No command found for container"}).Error("Container status")
 				errorChannel <- fmt.Errorf("no command found for container: %s", container.Name)
 				return
 			}
@@ -112,7 +117,8 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 
 			pgidDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name, "containers", container.Name)
 			pgidFile := path.Join(pgidDir, "pgid")
-			log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
+			// log.G(ctx).WithField("pgid file path", pgidFile).Info("pgid file path")
+			log.G(ctx).WithFields(log.Fields{"container": container.Name, "pgid_file_path": pgidFile}).Info("Container status")
 			err = ioutil.WriteFile(pgidFile, []byte(fmt.Sprintf("%d\n", pgid)), 0644)
 			if err != nil {
 				containerState = &v1.ContainerState{
@@ -147,17 +153,20 @@ func (p *MockProvider) runScriptParallel(ctx context.Context, pod *v1.Pod, volum
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.G(ctx).WithField("error", r).Error("Recovered from panic while closing channels")
+				// log.G(ctx).WithField("error", r).Error("Recovered from panic while closing channels")
+				log.G(ctx).WithFields(log.Fields{"error": r, "message": "Recovered from panic while closing channels"}).Error("Container status")
 			}
 		}()
 
 		wg.Wait()
 
 		close(errorChannel)
-		log.G(ctx).Info("errorChannel closed")
+		// log.G(ctx).Info("errorChannel closed")
+		log.G(ctx).WithFields(log.Fields{"message": "errorChannel closed"}).Info("Container status")
 
 		close(containerStatusChannel)
-		log.G(ctx).Info("containerStatusChannel closed")
+		// log.G(ctx).Info("containerStatusChannel closed")
+		log.G(ctx).WithFields(log.Fields{"message": "containerStatusChannel closed"}).Info("Container status")
 	}()
 
 	return errorChannel, containerStatusChannel
@@ -274,7 +283,8 @@ func runScript(ctx context.Context, command []string, args string, env []v1.EnvV
 			return result.Pgid, nil, nil
 		}
 	case <-time.After(time.Second * 1/2): // adjust the timeout as needed. Can't be > 5 secs or the method getPods will be executed.
-		log.G(ctx).WithField("command", cmd.Args).Info("Command is not finished yet after 1/2 seconds")
+		// log.G(ctx).WithField("command", cmd.Args).Info("Command is not finished yet after 1/2 seconds")
+		log.G(ctx).WithFields(log.Fields{"command": cmd.Args, "message": "Command is not finished yet after 1/2 seconds"}).Info("Container status")
 		return pgid, nil, nil
 	}
 }
@@ -310,12 +320,14 @@ func prepareCommand(ctx context.Context, command []string, args string, envMap m
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	log.G(ctx).WithField("command", cmd.Args).Info("Command to be executed")
+	// log.G(ctx).WithField("command", cmd.Args).Info("Command to be executed")
+	log.G(ctx).WithFields(log.Fields{"command": cmd.Args, "message": "Command to be executed"}).Info("Container status")
 	return cmd
 }
 
 func handleRunCmdError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, message string, startTime metav1.Time, reason string) (int, *v1.ContainerState, error) {
-	log.G(ctx).WithField("command", cmd.Args).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
+	// log.G(ctx).WithField("command", cmd.Args).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
+	log.G(ctx).WithFields(log.Fields{"command": cmd.Args, "message": message, "error": err, "reason": reason}).Error("Container status")
 	return pgid, &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			ExitCode:   1,
@@ -328,7 +340,8 @@ func handleRunCmdError(ctx context.Context, cmd *exec.Cmd, err error, pgid int, 
 }
 
 func handleCollectScriptsError(ctx context.Context, c v1.Container, message, reason string, err error, startTime metav1.Time) *v1.ContainerState {
-	log.G(ctx).WithField("container", c.Name).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
+	// log.G(ctx).WithField("container", c.Name).Errorf("Reason: %s, Message: %s, Error: %v", reason, message, err)
+	log.G(ctx).WithFields(log.Fields{"container": c.Name, "message": message, "error": err, "reason": reason}).Error("Container status")
 	return &v1.ContainerState{
 		Terminated: &v1.ContainerStateTerminated{
 			Message:    message,
@@ -359,7 +372,8 @@ func copyFile(ctx context.Context, src string, dst string, filename string) erro
 func createDirectory(ctx context.Context, dst string) error {
 	err := exec.Command("mkdir", "-p", dst).Run()
 	if err != nil {
-		log.G(ctx).WithField("directory", dst).Errorf("failed to create directory; error: %v", err)
+		// log.G(ctx).WithField("directory", dst).Errorf("failed to create directory; error: %v", err)
+		log.G(ctx).WithFields(log.Fields{"directory": dst, "error": err}).Error("Container status")
 		return err
 	}
 	return nil
@@ -368,10 +382,11 @@ func createDirectory(ctx context.Context, dst string) error {
 func copySourceFileToDestination(ctx context.Context, src string, dst string, filename string) error {
 	err := exec.Command("cp", path.Join(src, filename), path.Join(dst, filename)).Run()
 	if err != nil {
-		log.G(ctx).WithFields(log.Fields{
-			"source":      path.Join(src, filename),
-			"destination": path.Join(dst, filename),
-		}).Errorf("failed to copy file; error: %v", err)
+		// log.G(ctx).WithFields(log.Fields{
+		// 	"source":      path.Join(src, filename),
+		// 	"destination": path.Join(dst, filename),
+		// }).Errorf("failed to copy file; error: %v", err)
+		log.G(ctx).WithFields(log.Fields{"source": path.Join(src, filename), "destination": path.Join(dst, filename), "error": err}).Error("Container status")
 		return err
 	}
 	return nil

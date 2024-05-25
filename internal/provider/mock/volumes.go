@@ -47,15 +47,18 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 	// 	WithField("podName", pod.Name)
 
 	vol := make(map[string]string)
-	log.G(ctx).Infof("inspecting volumes for pod %s", pod.Name)
+	// log.G(ctx).Infof("inspecting volumes for pod %s", pod.Name)
+	log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "message": "inspecting volumes"}).Info("Pod status")
 	uid, gid, err := uidGidFromSecurityContext(pod, 0)
-	log.G(ctx).Infof("uid: %s, gid: %s", uid, gid)
+	// log.G(ctx).Infof("uid: %s, gid: %s", uid, gid)
+	log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "uid": uid, "gid": gid}).Info("Pod status")
 
 	if err != nil {
 		return nil, err
 	}
 	for _, v := range pod.Spec.Volumes {
-		log.G(ctx).Infof("inspecting volume %s", v.Name)
+		// log.G(ctx).Infof("inspecting volume %s", v.Name)
+		log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "volume": v.Name}).Info("Pod status")
 		i := v.Name
 		switch {
 		case v.HostPath != nil:
@@ -74,7 +77,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 			if err != nil {
 				return nil, err
 			}
-			log.G(ctx).Infof("created %q for emptyDir %q", dir, v.Name)
+			// log.G(ctx).Infof("created %q for emptyDir %q", dir, v.Name)
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name}).Info("Pod status")
 			vol[v.Name] = dir
 
 		case v.Secret != nil:
@@ -94,7 +98,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 			if err != nil {
 				return nil, err
 			}
-			log.G(ctx).Infof("created %q for secret %q", dir, v.Name)
+			// log.G(ctx).Infof("created %q for secret %q", dir, v.Name)
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name}).Info("Pod status")
 
 			for k, v := range secret.StringData {
 				data, err := base64.StdEncoding.DecodeString(string(v))
@@ -117,7 +122,9 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 			if which != volumeAll && which != volumeConfigMap {
 				continue
 			}
-			log.G(ctx).Infof("inspecting configMap %s", v.ConfigMap.Name)
+			// log.G(ctx).Infof("inspecting configMap %s", v.ConfigMap.Name)
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "configMap": v.ConfigMap.Name}).Info("Pod status")
+
 			configMap, err := p.rm.GetConfigMap(v.ConfigMap.Name, pod.Namespace)
 			if v.ConfigMap.Optional != nil && !*v.ConfigMap.Optional && errors.IsNotFound(err) {
 				return nil, fmt.Errorf("configMap %s is required by pod %s and does not exist", v.ConfigMap.Name, pod.Name)
@@ -131,7 +138,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 				return nil, err
 			}
 
-			log.G(ctx).Infof("created %q for configmap %q", dir, v.Name)
+			// log.G(ctx).Infof("created %q for configmap %q", dir, v.Name)
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name, "message": "created configmap"}).Info("Pod status")
 
 			for k, v := range configMap.Data {
 				if err := writeFile(ctx, dir, k, uid, gid, []byte(v)); err != nil {
@@ -170,7 +178,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 									return nil, err
 								}
 
-								log.G(ctx).Infof("created %q for projected serviceAccountToken (secret) %q", dir, v.Name)
+								// log.G(ctx).Infof("created %q for projected serviceAccountToken (secret) %q", dir, v.Name)
+								log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name, "message": "created projected serviceAccountToken"}).Info("Pod status")
 
 								for k, v := range secret.StringData {
 									data, err := base64.StdEncoding.DecodeString(string(v))
@@ -206,7 +215,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 						return nil, err
 					}
 
-					log.G(ctx).Infof("created %q for projected secret %q", dir, v.Name)
+					// log.G(ctx).Infof("created %q for projected secret %q", dir, v.Name)
+					log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name, "message": "created projected secret"}).Info("Pod status")
 
 					for _, keyToPath := range source.ConfigMap.Items {
 						for k, v := range secret.StringData {
@@ -244,7 +254,8 @@ func (p *MockProvider) volumes(ctx context.Context, pod *v1.Pod, which Volume) (
 						return nil, err
 					}
 
-					log.G(ctx).Infof("created %q for projected configmap %q", dir, v.Name)
+					// log.G(ctx).Infof("created %q for projected configmap %q", dir, v.Name)
+					log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "dir": dir, "volume": v.Name, "message": "created projected configmap"}).Info("Pod status")
 
 					for _, keyToPath := range source.ConfigMap.Items {
 						for k, v := range configMap.Data {
@@ -298,7 +309,8 @@ func writeFile(ctx context.Context, dir, file, uid, gid string, data []byte) err
 		return err
 	}
 	// fnlog.Debugf("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
-	log.G(ctx).Infof("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
+	// log.G(ctx).Infof("chowning %q to %s.%s", tmpfile.Name(), uid, gid)
+	log.G(ctx).WithFields(log.Fields{"tmpfile": tmpfile.Name(), "uid": uid, "gid": gid, "message": "chowning"}).Info("Container status")
 	if err := chown(tmpfile.Name(), uid, gid); err != nil {
 		return err
 	}
@@ -308,13 +320,15 @@ func writeFile(ctx context.Context, dir, file, uid, gid string, data []byte) err
 		x = len(data)
 	}
 	// fnlog.Debugf("writing data %q to path %q", data[:x], tmpfile.Name())
-	log.G(ctx).Infof("writing data %q to path %q", data[:x], tmpfile.Name())
+	// log.G(ctx).Infof("writing data %q to path %q", data[:x], tmpfile.Name())
+	log.G(ctx).WithFields(log.Fields{"data": data[:x], "tmpfile": tmpfile.Name(), "message": "writing data"}).Info("Container status")
 	if err := ioutil.WriteFile(tmpfile.Name(), data, 0640); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, file)
 	// fnlog.Debugf("renaming %q to %q", tmpfile.Name(), path)
-	log.G(ctx).Infof("renaming %q to %q", tmpfile.Name(), path)
+	// log.G(ctx).Infof("renaming %q to %q", tmpfile.Name(), path)
+	log.G(ctx).WithFields(log.Fields{"tmpfile": tmpfile.Name(), "path": path, "message": "renaming"}).Info("Container status")
 
 	return os.Rename(tmpfile.Name(), path)
 }
