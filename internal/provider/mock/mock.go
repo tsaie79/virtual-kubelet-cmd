@@ -373,12 +373,10 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			fmt.Println("Get current user processes: ", pids)
 			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
 
-			// Iterate over each process ID
 			for _, pid := range pids {
 				// Create a new process instance
 				proc, err := os.FindProcess(int(pid))
 				if err != nil {
-					// errCh <- fmt.Errorf("failed to find process: %w", err)
 					continue
 				}
 
@@ -392,6 +390,13 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				// Skip if the process group ID doesn't match
 				if strconv.Itoa(pgidInt) != pgid {
 					continue
+				}
+
+				// Send a SIGSTOP signal to the process
+				err = proc.Signal(syscall.SIGSTOP)
+				if err != nil {
+					errCh <- fmt.Errorf("failed to stop process: %w", err)
+					return
 				}
 
 				// Send a SIGKILL signal to the process
