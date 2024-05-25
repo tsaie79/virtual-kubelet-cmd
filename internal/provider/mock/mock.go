@@ -410,7 +410,7 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			wg.Wait()
 
 			// Sleep for a short duration to give the OS time to stop the processes
-			// time.Sleep(8 * time.Second)
+			time.Sleep(3 * time.Second)
 
 			// Then, kill all processes
 			for _, pid := range pids {
