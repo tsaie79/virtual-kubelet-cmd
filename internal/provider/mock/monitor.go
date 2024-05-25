@@ -594,8 +594,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 	}
 
 	// Log the transition
-	log.G(ctx).WithField("container", c.Name).Infof("Transitioning from %s to %s\n", prevContainerStateString, currentContainerState)
-
+	log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "prevContainerStateString": prevContainerStateString, "currentContainerState": currentContainerState, "prevContainerStartTime": prevContainerStartTime, "prevContainerFinishTime": prevContainerFinishTime}).Info("Container status")
 	if currentContainerState == "Running" {
 		containerState = &v1.ContainerState{
 			Running: &v1.ContainerStateRunning{
@@ -632,7 +631,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 
 // createContainerStatus creates a container state.
 func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid string, ImageID string) *v1.ContainerStatus {
-	log.G(context.Background()).WithField("container", c.Name).Infof("Container state: %v\n", containerState)
+	log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "containerState": containerState}).Info("Container status")
 	ready := false
 	if containerState.Running != nil {
 		ready = true
