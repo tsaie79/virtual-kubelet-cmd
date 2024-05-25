@@ -33,8 +33,8 @@ import (
 	// "github.com/pkg/errors"
 	"os"
 	"strconv"
-
 	"os/user"
+	"sync"
 )
 
 const (
@@ -371,43 +371,82 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				return
 			}
 			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
-			fmt.Printf("Get current %v user processes: %v\n", username, pids)
+			// First, stop all processes
+			var wg sync.WaitGroup
+
 			for _, pid := range pids {
-				// Create a new process instance
-				proc, err := os.FindProcess(int(pid))
-				if err != nil {
-					continue
-				}
+				wg.Add(1)
+				go func(pid int) {
+					defer wg.Done()
 
-				// Get the process group ID (pgid) of the process and allow it to fail
-				pgidInt, err := syscall.Getpgid(int(pid))
-				if err != nil {
-					errCh <- fmt.Errorf("failed to get pgid: %w", err)
-					return
-				}
+					// Create a new process instance
+					proc, err := os.FindProcess(pid)
+					if err != nil {
+						return
+					}
 
-				fmt.Printf("Get pgid of process %v: %v, %v\n", pid, pgidInt, pgid)
-				// Skip if the process group ID doesn't match
-				if strconv.Itoa(pgidInt) != pgid {
-					continue
-				}
+					// Get the process group ID (pgid) of the process and allow it to fail
+					pgidInt, err := syscall.Getpgid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get pgid: %w", err)
+						return
+					}
 
-				// Send a SIGSTOP signal to the process
-				fmt.Printf("Stopping process %v\n", pid)
-				err = proc.Signal(syscall.SIGSTOP)
-				if err != nil {
-					errCh <- fmt.Errorf("failed to stop process: %w", err)
-					return
-				}
+					// Skip if the process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid {
+						return
+					}
 
-				// Send a SIGKILL signal to the process
-				fmt.Printf("Killing process %v\n", pid)
-				err = proc.Signal(syscall.SIGKILL)
-				if err != nil {
-					errCh <- fmt.Errorf("failed to kill process: %w", err)
-					return
-				}
+					// Send a SIGSTOP signal to the process
+					fmt.Printf("Stopping process %v\n", pid)
+					err = proc.Signal(syscall.SIGSTOP)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to stop process: %w", err)
+						return
+					}
+				}(int(pid))
 			}
+
+			wg.Wait()
+
+			// Sleep for a short duration to give the OS time to stop the processes
+			// time.Sleep(8 * time.Second)
+
+			// Then, kill all processes
+			for _, pid := range pids {
+				wg.Add(1)
+				go func(pid int) {
+					defer wg.Done()
+
+					// Create a new process instance
+					proc, err := os.FindProcess(pid)
+					if err != nil {
+						return
+					}
+
+					// Get the process group ID (pgid) of the process and allow it to fail
+					pgidInt, err := syscall.Getpgid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get pgid: %w", err)
+						return
+					}
+
+					// Skip if the process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid {
+						return
+					}
+
+					// Send a SIGKILL signal to the process
+					fmt.Printf("Killing process %v\n", pid)
+					err = proc.Signal(syscall.SIGKILL)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to kill process: %w", err)
+						return
+					}
+				}(int(pid))
+			}
+
+			wg.Wait()
 
 			// Delete the pod's directory
 			volumeDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name)
