@@ -274,7 +274,6 @@ func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float
 			continue
 		}
 		
-		fmt.Println("pid: ", pid, "pgid: ", processPgid, "ppid: ", ppid, "parentProcessPgid: ", parentProcessPgid, "target pgid: ", pgid)
 		// Accumulate the CPU times
 		if cpuTimes, err := p.Times(); err == nil {
 			totalUserTime += cpuTimes.User
@@ -569,7 +568,7 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 		}
 		status, _ := p.Status()
 		processStatus = append(processStatus, status)
-		log.G(context.Background()).WithField("cmd", cmd).Infof("Process status: %v\n", status)
+		log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
 	}
 	return processStatus
 }
