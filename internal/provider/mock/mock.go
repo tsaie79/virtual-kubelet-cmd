@@ -33,6 +33,9 @@ import (
 	// "github.com/pkg/errors"
 	"os"
 	"strconv"
+	"os/user"
+	"sync"
+	"io/ioutil"
 )
 
 const (
@@ -357,40 +360,122 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 			// Get the process group ID (pgid) from the container ID
 			pgid := containerStatus.ContainerID
 			// Get the list of process IDs (pids)
-			pids, err := process.Pids()
+			// pids, err := process.Pids()
+			// if err != nil {
+			// 	errCh <- fmt.Errorf("failed to get pids: %w", err)
+			// 	return
+			// }
+
+			pids, username, err := getUserProcesses()
 			if err != nil {
-				errCh <- fmt.Errorf("failed to get pids: %w", err)
+				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
-			// Iterate over each process ID
+			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
+			// First, stop all processes
+			var wg sync.WaitGroup
+
 			for _, pid := range pids {
-				// Create a new process instance
-				proc, err := process.NewProcess(pid)
-				if err != nil {
-					// errCh <- fmt.Errorf("failed to get process: %w", err)
-					continue
-				}
+				wg.Add(1)
+				go func(pid int) {
+					defer wg.Done()
 
-				// Get the process group ID (pgid) of the process and allow it to fail
-				pgidInt, err := syscall.Getpgid(int(pid))
-				if err != nil {
-					errCh <- fmt.Errorf("failed to get pgid: %w", err)
-					return
-				}
+					// Create a new process instance
+					proc, err := os.FindProcess(pid)
+					if err != nil {
+						return
+					}
 
-				// Skip if the process group ID doesn't match
-				if strconv.Itoa(pgidInt) != pgid {
-					continue
-				}
+					// Get the process group ID (pgid) of the process and allow it to fail
+					pgidInt, err := syscall.Getpgid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get pgid: %w", err)
+						return
+					}
 
-				// Kill the process
-				err = proc.Kill()
-				if err != nil {
-					errCh <- fmt.Errorf("failed to kill process: %w", err)
-					return
-				}
+					// Get the parent process ID (ppid) of the process
+					ppid, err := getParentPid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get ppid: %w", err)
+						return
+					}
+
+					// Get the process group ID (pgid) of the parent process
+					ppgid, err := syscall.Getpgid(ppid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
+						return
+					}
+
+					// Skip if the process group ID doesn't match and the parent's process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid && strconv.Itoa(ppgid) != pgid {
+						return
+					}
+
+					// Send a SIGSTOP signal to the process
+					log.G(ctx).Infof("Stopping process %v\n", pid)
+					err = proc.Signal(syscall.SIGSTOP)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to stop process: %w", err)
+						return
+					}
+				}(int(pid))
 			}
 
+			wg.Wait()
+
+
+			// Sleep for a short duration to give the OS time to stop the processes
+			time.Sleep(3 * time.Second)
+
+			for _, pid := range pids {
+				wg.Add(1)
+				go func(pid int) {
+					defer wg.Done()
+
+					// Create a new process instance
+					proc, err := os.FindProcess(pid)
+					if err != nil {
+						return
+					}
+
+					// Get the process group ID (pgid) of the process and allow it to fail
+					pgidInt, err := syscall.Getpgid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get pgid: %w", err)
+						return
+					}
+
+					// Get the parent process ID (ppid) of the process
+					ppid, err := getParentPid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get ppid: %w", err)
+						return
+					}
+
+					// Get the process group ID (pgid) of the parent process
+					ppgid, err := syscall.Getpgid(ppid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
+						return
+					}
+
+					// Skip if the process group ID doesn't match and the parent's process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid && strconv.Itoa(ppgid) != pgid {
+						return
+					}
+
+					// Send a SIGKILL signal to the process
+					log.G(ctx).Infof("Killing process %v\n", pid)
+					err = proc.Signal(syscall.SIGKILL)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to kill process: %w", err)
+						return
+					}
+				}(int(pid))
+			}
+
+			wg.Wait()
 
 			// Delete the pod's directory
 			volumeDir := path.Join(os.Getenv("HOME"), pod.Namespace, pod.Name)
@@ -399,8 +484,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				errCh <- fmt.Errorf("failed to delete pod directory: %w", err)
 				return
 			}
-
-			//
 
 			// Update the container status
 			containerStatus.State.Terminated = &v1.ContainerStateTerminated{
@@ -978,4 +1061,79 @@ func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
 		}
 	}
 	return nil
+}
+
+
+func getUserProcesses() ([]int32, string, error) {
+    // Get the current user
+    currentUser, err := user.Current()
+    if err != nil {
+        return nil, "", fmt.Errorf("Failed to get current user: %v", err)
+    }
+
+    // Get the username of the current user
+    username := currentUser.Username
+
+    // Get a list of all process IDs
+    pids, err := process.Pids()
+    if err != nil {
+        return nil, username, fmt.Errorf("Failed to get process IDs: %v", err)
+    }
+
+    userPids := []int32{}
+
+    // Iterate over each process ID
+    for _, pid := range pids {
+        // Create a new process instance
+        proc, err := process.NewProcess(pid)
+        if err != nil {
+            fmt.Println("Failed to get process", pid, ":", err)
+            continue
+        }
+
+        // Get the username of the process
+        procUsername, err := proc.Username()
+        if err != nil {
+            fmt.Println("Failed to get process username:", err)
+            continue
+        }
+
+        // If the process username matches the current user's username, then the process belongs to the current user
+        if procUsername == username {
+            userPids = append(userPids, pid)
+        }
+    }
+
+    return userPids, username, nil
+}
+
+
+func getParentPid(pid int) (int, error) {
+    // Open the /proc/<pid>/stat file
+    file, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+    if err != nil {
+        return 0, err
+    }
+    defer file.Close()
+
+    // Read the contents of the file
+    b, err := ioutil.ReadAll(file)
+    if err != nil {
+        return 0, err
+    }
+
+    // The contents of the file are space-separated values
+    // The fourth value is the parent process ID (ppid)
+    fields := strings.Fields(string(b))
+    if len(fields) < 4 {
+        return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
+    }
+
+    // Convert the ppid to an integer
+    ppid, err := strconv.Atoi(fields[3])
+    if err != nil {
+        return 0, err
+    }
+
+    return ppid, nil
 }
