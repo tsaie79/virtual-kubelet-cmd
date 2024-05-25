@@ -123,14 +123,14 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 	// if no config file is provided, set up a new config with default values
 	//cpu: defaultCPUCapacity, memory: defaultMemoryCapacity, pods: defaultPodCapacity
 	if providerConfig == "" {
-		log.G(context.Background()).Info("No provider config file provided, using default values")
+		log.G(context.Background()).WithFields(log.Fields{"providerConfig": providerConfig, "nodeName": nodeName, "message": "No provider config file provided, using default values"}).Info("Node status")
 		cpu := int64(runtime.NumCPU())
 		mem := int64(getSystemTotalMemory())
 		pods := int64(1000)
 		config.CPU = fmt.Sprintf("%d", cpu)
 		config.Memory = fmt.Sprintf("%d", mem)
 		config.Pods = fmt.Sprintf("%d", pods)
-		log.G(context.Background()).Infof("cpu: %v, memory: %v (bytes), pods: %v", config.CPU, config.Memory, config.Pods)
+		log.G(context.Background()).WithFields(log.Fields{"cpu": config.CPU, "memory": config.Memory, "pods": config.Pods}).Info("Node status")
 		return config, nil
 	}
 
@@ -182,7 +182,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, pod.Namespace, nameKey, pod.Name)
 
-	log.G(ctx).Infof("Received CreatePod %q", pod.Name)
+	log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "Received CreatePod"}).Info("Pod status")
 
 	// Build key for pod
 	key, err := buildKey(pod)
@@ -199,7 +199,7 @@ func (p *MockProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// Process pod volumes
 	volumes, err := p.volumes(ctx, pod, volumeAll)
 	if err != nil {
-		log.G(ctx).WithField("err", err).Error("Failed to process volumes")
+		log.G(ctx).WithFields(log.Fields{"err": err, "pod": pod.Name, "namespace": pod.Namespace, "message": "Failed to process volumes"}).Error("Pod status")
 		return err
 	}
 
@@ -295,7 +295,8 @@ func (p *MockProvider) UpdatePod(ctx context.Context, pod *v1.Pod) error {
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, pod.Namespace, nameKey, pod.Name)
 
-	log.G(ctx).Infof("receive UpdatePod %q", pod.Name)
+	// log.G(ctx).Infof("receive UpdatePod %q", pod.Name)
+	log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "Received UpdatePod"}).Info("Pod status")
 
 	key, err := buildKey(pod)
 	if err != nil {
@@ -317,7 +318,8 @@ func (p *MockProvider) DeletePod(ctx context.Context, pod *v1.Pod) error {
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, pod.Namespace, nameKey, pod.Name)
 
-	log.G(ctx).Infof("Received DeletePod %q", pod.Name)
+	// log.G(ctx).Infof("Received DeletePod %q", pod.Name)
+	log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "Received DeletePod"}).Info("Pod status")
 
 	// Build key for pod
 	key, err := buildKey(pod)
@@ -371,7 +373,9 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
-			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
+			// log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
+			log.G(ctx).WithFields(log.Fields{"username": username, "pids": pids, "message": "Get current user processes"}).Info("Process status")
+
 			// First, stop all processes
 			var wg sync.WaitGroup
 
@@ -413,7 +417,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Send a SIGSTOP signal to the process
-					log.G(ctx).Infof("Stopping process %v\n", pid)
+					// log.G(ctx).Infof("Stopping process %v\n", pid)
+					log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Stopping process"}).Info("Process status")
 					err = proc.Signal(syscall.SIGSTOP)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to stop process: %w", err)
@@ -466,7 +471,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Send a SIGKILL signal to the process
-					log.G(ctx).Infof("Killing process %v\n", pid)
+					// log.G(ctx).Infof("Killing process %v\n", pid)
+					log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Killing process"}).Info("Process status")
 					err = proc.Signal(syscall.SIGKILL)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to kill process: %w", err)
@@ -501,7 +507,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 	for range pod.Status.ContainerStatuses {
 		err := <-errCh
 		if err != nil {
-			log.G(ctx).WithError(err).Error("Failed to delete pod")
+			// log.G(ctx).WithError(err).Error("Failed to delete pod")
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "err": err, "message": "Failed to delete pod"}).Error("Pod status")
 			return err
 		}
 	}
@@ -526,7 +533,8 @@ func (p *MockProvider) GetPod(ctx context.Context, namespace, name string) (pod 
 	// Add the pod's coordinates to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, namespace, nameKey, name)
 
-	log.G(ctx).Infof("receive GetPod %q", name)
+	// log.G(ctx).Infof("receive GetPod %q", name)
+	log.G(ctx).WithFields(log.Fields{"pod": name, "namespace": namespace, "message": "Received GetPod"}).Info("Pod status")
 
 	key, err := buildKeyFromNames(namespace, name)
 	if err != nil {
@@ -547,27 +555,31 @@ func (p *MockProvider) GetContainerLogs(ctx context.Context, namespace, podName,
 	// Add pod and container attributes to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, namespace, nameKey, podName, containerNameKey, containerName)
 
-	log.G(ctx).Infof("receive GetContainerLogs %q", podName)
+	// log.G(ctx).Infof("receive GetContainerLogs %q", podName)
+	log.G(ctx).WithFields(log.Fields{"pod": podName, "namespace": namespace, "container": containerName, "message": "Received GetContainerLogs"}).Info("Pod status")
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
 // RunInContainer executes a command in a container in the pod, copying data
 // between in/out/err and the container's stdin/stdout/stderr.
 func (p *MockProvider) RunInContainer(ctx context.Context, namespace, name, container string, cmd []string, attach api.AttachIO) error {
-	log.G(context.TODO()).Infof("receive ExecInContainer %q", container)
+	// log.G(context.TODO()).Infof("receive ExecInContainer %q", container)
+	log.G(ctx).WithFields(log.Fields{"container": container, "message": "Received RunInContainer"}).Info("Container status")
 	return nil
 }
 
 // AttachToContainer attaches to the executing process of a container in the pod, copying data
 // between in/out/err and the container's stdin/stdout/stderr.
 func (p *MockProvider) AttachToContainer(ctx context.Context, namespace, name, container string, attach api.AttachIO) error {
-	log.G(ctx).Infof("receive AttachToContainer %q", container)
+	// log.G(ctx).Infof("receive AttachToContainer %q", container)
+	log.G(ctx).WithFields(log.Fields{"container": container, "message": "Received AttachToContainer"}).Info("Container status")
 	return nil
 }
 
 // PortForward forwards a local port to a port on the pod
 func (p *MockProvider) PortForward(ctx context.Context, namespace, pod string, port int32, stream io.ReadWriteCloser) error {
-	log.G(ctx).Infof("receive PortForward %q", pod)
+	// log.G(ctx).Infof("receive PortForward %q", pod)
+	log.G(ctx).WithFields(log.Fields{"pod": pod, "message": "Received PortForward"}).Info("Pod status")
 	return nil
 }
 
@@ -580,7 +592,8 @@ func (p *MockProvider) GetPodStatus(ctx context.Context, namespace, name string)
 	// Add namespace and name as attributes to the current span.
 	ctx = addAttributes(ctx, span, namespaceKey, namespace, nameKey, name)
 
-	log.G(ctx).Infof("receive GetPodStatus %q", name)
+	// log.G(ctx).Infof("receive GetPodStatus %q", name)
+	log.G(ctx).WithFields(log.Fields{"pod": name, "namespace": namespace, "message": "Received GetPodStatus"}).Info("Pod status")
 
 	pod, err := p.GetPod(ctx, namespace, name)
 	if err != nil {
@@ -595,7 +608,8 @@ func (p *MockProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	ctx, span := trace.StartSpan(ctx, "GetPods")
 	defer span.End()
 
-	log.G(ctx).Info("receive GetPods")
+	// log.G(ctx).Info("receive GetPods")
+	log.G(ctx).WithFields(log.Fields{"message": "Received GetPods"}).Info("Pod status")
 
 	var pods []*v1.Pod
 
@@ -683,7 +697,8 @@ func (p *MockProvider) notifyNodeAliveTime(ctx context.Context, n *v1.Node, star
 		n.Status.Conditions[0].Reason = "NodeNotReady"
 		n.Status.Conditions[0].Message = "Node is not ready"
 	}
-	log.G(ctx).Info("Updating node alive time, aliveTime: ", aliveTime)
+	// log.G(ctx).Info("Updating node alive time, aliveTime: ", aliveTime)
+	log.G(ctx).WithFields(log.Fields{"aliveTime": aliveTime, "message": "Updating node alive time"}).Info("Node status")
 }
 
 // Capacity returns a resource list containing the capacity limits.
@@ -988,7 +1003,8 @@ func (p *MockProvider) statusLoop(ctx context.Context) {
 		}
 
 		if err := p.notifyPodStatuses(ctx); err != nil {
-			log.G(ctx).WithError(err).Error("Error updating node statuses")
+			// log.G(ctx).WithError(err).Error("Error updating node statuses")
+			log.G(ctx).WithFields(log.Fields{"err": err, "message": "Error updating node statuses"}).Error("Node status")
 		}
 	}
 }
@@ -1001,7 +1017,7 @@ func (p *MockProvider) notifyPodStatuses(ctx context.Context) error {
 
 	for _, pod := range ls {
 		p.notifier(pod)
-		log.G(ctx).Infof("pod status: %v", pod.Status)
+		log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "status": pod.Status}).Info("Pod status")
 	}
 
 	return nil
@@ -1049,7 +1065,8 @@ func filterContainersByPgid(pod *v1.Pod, pgidMap map[string]int) []v1.Container 
 			seenPgid[pgid] = true
 		}
 	}
-	log.G(context.Background()).Infof("filteredContainers: %v", filteredContainers)
+	// log.G(context.Background()).Infof("filteredContainers: %v", filteredContainers)
+	log.G(context.Background()).WithFields(log.Fields{"filteredContainers": filteredContainers, "message": "Filtered containers"}).Info("Container status")
 	return filteredContainers
 }
 
