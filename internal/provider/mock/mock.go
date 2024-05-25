@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"os/user"
 	"sync"
+	"io/ioutil"
 )
 
 const (
@@ -392,8 +393,23 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 						return
 					}
 
-					// Skip if the process group ID doesn't match
-					if strconv.Itoa(pgidInt) != pgid {
+					// Get the parent process ID (ppid) of the process
+					ppid, err := getParentPid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get ppid: %w", err)
+						return
+					}
+					fmt.Printf("pid: %v, ppid: %v\n", pid, ppid)
+
+					// Get the process group ID (pgid) of the parent process
+					ppgid, err := syscall.Getpgid(ppid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
+						return
+					}
+
+					// Skip if the process group ID doesn't match and the parent's process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid && strconv.Itoa(ppgid) != pgid {
 						return
 					}
 
@@ -409,10 +425,10 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 
 			wg.Wait()
 
+
 			// Sleep for a short duration to give the OS time to stop the processes
 			time.Sleep(3 * time.Second)
 
-			// Then, kill all processes
 			for _, pid := range pids {
 				wg.Add(1)
 				go func(pid int) {
@@ -431,8 +447,23 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 						return
 					}
 
-					// Skip if the process group ID doesn't match
-					if strconv.Itoa(pgidInt) != pgid {
+					// Get the parent process ID (ppid) of the process
+					ppid, err := getParentPid(pid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get ppid: %w", err)
+						return
+					}
+					fmt.Printf("pid: %v, ppid: %v\n", pid, ppid)
+
+					// Get the process group ID (pgid) of the parent process
+					ppgid, err := syscall.Getpgid(ppid)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
+						return
+					}
+
+					// Skip if the process group ID doesn't match and the parent's process group ID doesn't match
+					if strconv.Itoa(pgidInt) != pgid && strconv.Itoa(ppgid) != pgid {
 						return
 					}
 
@@ -1076,4 +1107,35 @@ func getUserProcesses() ([]int32, string, error) {
     }
 
     return userPids, username, nil
+}
+
+
+func getParentPid(pid int) (int, error) {
+    // Open the /proc/<pid>/stat file
+    file, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+    if err != nil {
+        return 0, err
+    }
+    defer file.Close()
+
+    // Read the contents of the file
+    b, err := ioutil.ReadAll(file)
+    if err != nil {
+        return 0, err
+    }
+
+    // The contents of the file are space-separated values
+    // The fourth value is the parent process ID (ppid)
+    fields := strings.Fields(string(b))
+    if len(fields) < 4 {
+        return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
+    }
+
+    // Convert the ppid to an integer
+    ppid, err := strconv.Atoi(fields[3])
+    if err != nil {
+        return 0, err
+    }
+
+    return ppid, nil
 }
