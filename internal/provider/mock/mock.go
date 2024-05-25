@@ -399,7 +399,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 						errCh <- fmt.Errorf("failed to get ppid: %w", err)
 						return
 					}
-					fmt.Printf("pid: %v, ppid: %v\n", pid, ppid)
 
 					// Get the process group ID (pgid) of the parent process
 					ppgid, err := syscall.Getpgid(ppid)
@@ -453,7 +452,6 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 						errCh <- fmt.Errorf("failed to get ppid: %w", err)
 						return
 					}
-					fmt.Printf("pid: %v, ppid: %v\n", pid, ppid)
 
 					// Get the process group ID (pgid) of the parent process
 					ppgid, err := syscall.Getpgid(ppid)
