@@ -989,13 +989,13 @@ func (p *MockProvider) NotifyPods(ctx context.Context, notifier func(*v1.Pod)) {
 }
 
 func (p *MockProvider) statusLoop(ctx context.Context) {
-	t := time.NewTimer(5 * time.Second)
+	t := time.NewTimer(10 * time.Second)
 	if !t.Stop() {
 		<-t.C
 	}
 
 	for {
-		t.Reset(5 * time.Second)
+		t.Reset(10 * time.Second)
 		select {
 		case <-ctx.Done():
 			return
