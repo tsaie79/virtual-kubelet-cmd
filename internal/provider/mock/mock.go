@@ -1082,46 +1082,51 @@ func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
 
 
 func getUserProcesses() ([]int32, string, error) {
-    // Get the current user
-    currentUser, err := user.Current()
-    if err != nil {
-        return nil, "", fmt.Errorf("Failed to get current user: %v", err)
-    }
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, "", fmt.Errorf("Failed to get current user: %v", err)
+	}
 
-    // Get the username of the current user
-    username := currentUser.Username
+	username := currentUser.Username
+	pids, err := process.Pids()
+	if err != nil {
+		return nil, username, fmt.Errorf("Failed to get process IDs: %v", err)
+	}
 
-    // Get a list of all process IDs
-    pids, err := process.Pids()
-    if err != nil {
-        return nil, username, fmt.Errorf("Failed to get process IDs: %v", err)
-    }
+	userPids := []int32{}
+	pidChan := make(chan int32, len(pids))
+	errChan := make(chan error, len(pids))
 
-    userPids := []int32{}
+	for _, pid := range pids {
+		go func(pid int32) {
+			proc, err := process.NewProcess(pid)
+			if err != nil {
+				errChan <- err
+				return
+			}
 
-    // Iterate over each process ID
-    for _, pid := range pids {
-        // Create a new process instance
-        proc, err := process.NewProcess(pid)
-        if err != nil {
-            fmt.Println("Failed to get process", pid, ":", err)
-            continue
-        }
+			procUsername, err := proc.Username()
+			if err != nil {
+				errChan <- err
+				return
+			}
 
-        // Get the username of the process
-        procUsername, err := proc.Username()
-        if err != nil {
-            fmt.Println("Failed to get process username:", err)
-            continue
-        }
+			if procUsername == username {
+				pidChan <- pid
+			}
+		}(pid)
+	}
 
-        // If the process username matches the current user's username, then the process belongs to the current user
-        if procUsername == username {
-            userPids = append(userPids, pid)
-        }
-    }
+	for i := 0; i < len(pids); i++ {
+		select {
+		case pid := <-pidChan:
+			userPids = append(userPids, pid)
+		case err := <-errChan:
+			fmt.Println("Failed to get process:", err)
+		}
+	}
 
-    return userPids, username, nil
+	return userPids, username, nil
 }
 
 
