@@ -3,7 +3,7 @@ package mock
 import (
 	"bufio"
 	"context"
-	"fmt"
+	// "fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -105,7 +105,7 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 		memoryValue += rss
 	}
 
-	log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Pod status")
+	// log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Pod status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -164,7 +164,7 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 	cpuValue = userTime + systemTime + cpuValue
 	memoryValue = rss + memoryValue
 
-	log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Container status")
+	// log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Container status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
