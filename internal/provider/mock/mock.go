@@ -373,8 +373,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 				errCh <- fmt.Errorf("failed to get user processes: %w", err)
 				return
 			}
-			// log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
-			log.G(ctx).WithFields(log.Fields{"username": username, "pids": pids, "message": "Get current user processes"}).Info("Process status")
+			log.G(ctx).Infof("Get current %v user processes: %v", username, pids)
+			// log.G(ctx).WithFields(log.Fields{"username": username, "pids": pids, "message": "Get current user processes"}).Info("Process status")
 
 			// First, stop all processes
 			var wg sync.WaitGroup
@@ -417,8 +417,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Send a SIGSTOP signal to the process
-					// log.G(ctx).Infof("Stopping process %v\n", pid)
-					log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Stopping process"}).Info("Process status")
+					log.G(ctx).Infof("Stopping process %v\n", pid)
+					// log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Stopping process"}).Info("Process status")
 					err = proc.Signal(syscall.SIGSTOP)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to stop process: %w", err)
@@ -471,8 +471,8 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Send a SIGKILL signal to the process
-					// log.G(ctx).Infof("Killing process %v\n", pid)
-					log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Killing process"}).Info("Process status")
+					log.G(ctx).Infof("Killing process %v\n", pid)
+					// log.G(ctx).WithFields(log.Fields{"pid": pid, "message": "Killing process"}).Info("Process status")
 					err = proc.Signal(syscall.SIGKILL)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to kill process: %w", err)
