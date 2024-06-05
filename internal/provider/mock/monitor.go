@@ -14,7 +14,7 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
-	// "github.com/virtual-kubelet/virtual-kubelet/log"
+	"github.com/virtual-kubelet/virtual-kubelet/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -31,7 +31,7 @@ func (p *MockProvider) generateNodeMetrics(ctx context.Context, metricsMap map[s
 	// Get node stats
 	userTime, systemTime, _, usedMemory, err := getNodeStats()
 	if err != nil {
-		// // log.G(ctx).WithFields(log.Fields{"message": "Error getting user, system, total CPU time, and used memory", "error": err}).Error("Node status")
+		log.G(ctx).WithFields(log.Fields{"message": "Error getting user, system, total CPU time, and used memory", "error": err}).Error("Node status")
 	} else {
 		// Update CPU and memory values
 		cpuValue = userTime + systemTime
@@ -80,7 +80,7 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 	// Get process group IDs from pod
 	pgids, pgidMap, err := getPgidsFromPod(pod)
 	if err != nil {
-		// log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "Error getting pgids", "error": err}).Error("Pod status")
+		log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "Error getting pgids", "error": err}).Error("Pod status")
 		return nil, nil
 	}
 
@@ -96,7 +96,7 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 	for _, pgid := range pgids {
 		userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 		if err != nil {
-			// log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "pgid": pgid, "message": "Error getting user, system CPU time, and memory usage", "error": err}).Error("Pod status")
+			log.G(ctx).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "pgid": pgid, "message": "Error getting user, system CPU time, and memory usage", "error": err}).Error("Pod status")
 			continue
 		}
 
@@ -105,7 +105,7 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 		memoryValue += rss
 	}
 
-	// // log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Pod status")
+	// log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Pod status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -149,14 +149,14 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 	// Get process group ID from container
 	pgid, err := getPgidFromPgidFile(pgidFile)
 	if err != nil {
-		// log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgidFile": pgidFile, "message": "Error getting pgid", "error": err}).Error("Container status")
+		log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgidFile": pgidFile, "message": "Error getting pgid", "error": err}).Error("Container status")
 		return nil
 	}
 
 	// Get process metrics
 	userTime, systemTime, rss, _, err := getProcessesMetrics(pgid)
 	if err != nil {
-		// log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "message": "Error getting user, system CPU time, and memory usage", "error": err}).Error("Container status")
+		log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "message": "Error getting user, system CPU time, and memory usage", "error": err}).Error("Container status")
 		return nil
 	}
 
@@ -164,7 +164,7 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 	cpuValue = userTime + systemTime + cpuValue
 	memoryValue = rss + memoryValue
 
-	// // log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Container status")
+	// log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue/1024/1024)}).Info("Container status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -201,7 +201,7 @@ func addMetricToMap(metricsMap map[string][]*dto.Metric, metricName string, newM
 	if existingMetrics, ok := metricsMap[metricName]; ok {
 		metricsMap[metricName] = append(existingMetrics, newMetric)
 	} else {
-		// // log.G(context.Background()).Errorf("Metrics not found: %v\n", metricName)
+		// log.G(context.Background()).Errorf("Metrics not found: %v\n", metricName)
 		metricsMap[metricName] = []*dto.Metric{newMetric}
 	}
 	return metricsMap
@@ -293,7 +293,7 @@ func getPgidFromPgidFile(pgidFilePath string) (int, error) {
 	// Open the pgid file
 	file, err := os.Open(pgidFilePath)
 	if err != nil {
-		// log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "message": "Failed to open pgid file", "error": err}).Error("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "message": "Failed to open pgid file", "error": err}).Error("Container status")
 		return 0, err
 	}
 	defer file.Close()
@@ -308,12 +308,12 @@ func getPgidFromPgidFile(pgidFilePath string) (int, error) {
 	// Convert the pgid string to an integer
 	pgid, err := strconv.Atoi(pgidString)
 	if err != nil {
-		// log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgidString": pgidString, "message": "Failed to convert pgid to integer", "error": err}).Error("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgidString": pgidString, "message": "Failed to convert pgid to integer", "error": err}).Error("Container status")
 		return 0, err
 	}
 
 	// Log the pgid
-	// log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgid": pgid}).Info("Container status")
+	log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgid": pgid}).Info("Container status")
 
 	return pgid, nil
 }
@@ -331,7 +331,7 @@ func getPgidsFromPod(pod *v1.Pod) ([]int, map[string]int, error) {
 		// Read the pgid from the file
 		pgid, err := readPgidFromFile(pgidFile)
 		if err != nil {
-			// log.G(context.Background()).WithFields(log.Fields{"container": container.Name, "pgidFile": pgidFile, "message": "Error reading pgid from file", "error": err}).Error("Container status")
+			log.G(context.Background()).WithFields(log.Fields{"container": container.Name, "pgidFile": pgidFile, "message": "Error reading pgid from file", "error": err}).Error("Container status")
 			return nil, nil, err
 		}
 
@@ -392,7 +392,7 @@ func (*MockProvider) createPodStatusFromContainerStatus(ctx context.Context, pod
 	areAllTerminated, areAllExitCodeZero := checkTerminatedContainer(pod)
 	podReady := v1.ConditionTrue
 	if areAllTerminated {
-		// log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "All processes are zombies."}).Info("Pod status")
+		log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "message": "All processes are zombies."}).Info("Pod status")
 		// if stderrNotEmpty || containerStartError || getPgidError || getPidsError || getStderrFileInfoError {
 		// 	pod.Status.Phase = v1.PodFailed
 		if !areAllExitCodeZero {
@@ -458,7 +458,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	// Get the process IDs (pids)
 	pids, err := process.Pids()
 	if err != nil {
-		// log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgidFile": pgidFile, "message": "Error getting pids", "error": err}).Error("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgidFile": pgidFile, "message": "Error getting pids", "error": err}).Error("Container status")
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
@@ -477,7 +477,7 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	// Get the file info
 	info, err := os.Stat(stderrFilePath)
 	if err != nil {
-		// log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "Error getting stderr file info", "error": err}).Error("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "Error getting stderr file info", "error": err}).Error("Container status")
 		containerState := &v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
 				StartedAt:  prevContainerStartTime[c.Name],
@@ -493,10 +493,10 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	// Check if the file is empty
 	hasStderr := false
 	if info.Size() != 0 {
-		// log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "The stderr file is not empty."}).Error("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "The stderr file is not empty."}).Error("Container status")
 		hasStderr = true
 	} else {
-		// log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "The stderr file is empty."}).Info("Container status")
+		log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "stderrFilePath": stderrFilePath, "message": "The stderr file is empty."}).Info("Container status")
 	}
 
 	// Get the process status for each pid
@@ -560,14 +560,14 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 			continue
 		}
 
-		// cmd, err := p.Cmdline()
-		// if err != nil {
-		// 	// log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd}).Error("Process status")
-		// 	continue
-		// }
+		cmd, err := p.Cmdline()
+		if err != nil {
+			log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd}).Error("Process status")
+			continue
+		}
 		status, _ := p.Status()
 		processStatus = append(processStatus, status)
-		// // log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
+		// log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
 	}
 	return processStatus
 }
@@ -577,7 +577,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 	var containerStatus *v1.ContainerStatus
 	var containerState *v1.ContainerState
 	var currentContainerState string
-	// ctx := context.Background()
+	ctx := context.Background()
 
 	var allZ = true
 	for _, status := range processStatus {
@@ -594,7 +594,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 	}
 
 	// Log the transition
-	// log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "prevContainerStateString": prevContainerStateString, "currentContainerState": currentContainerState, "prevContainerStartTime": prevContainerStartTime, "prevContainerFinishTime": prevContainerFinishTime}).Info("Container status")
+	log.G(ctx).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "prevContainerStateString": prevContainerStateString, "currentContainerState": currentContainerState, "prevContainerStartTime": prevContainerStartTime, "prevContainerFinishTime": prevContainerFinishTime}).Info("Container status")
 	if currentContainerState == "Running" {
 		containerState = &v1.ContainerState{
 			Running: &v1.ContainerStateRunning{
@@ -631,7 +631,7 @@ func determineContainerStatus(c *v1.Container, processStatus []string, pgid stri
 
 // createContainerStatus creates a container state.
 func createContainerStatus(c *v1.Container, containerState *v1.ContainerState, pgid string, ImageID string) *v1.ContainerStatus {
-	// log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "containerState": containerState}).Info("Container status")
+	log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgid": pgid, "ImageID": ImageID, "containerState": containerState}).Info("Container status")
 	ready := false
 	if containerState.Running != nil {
 		ready = true
