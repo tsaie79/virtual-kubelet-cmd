@@ -525,6 +525,8 @@ func checkTerminatedContainer(pod *v1.Pod) (areAllTerminated bool, areAllExitCod
 // getProcessStatus gets the process status for each pid.
 func getProcessStatus(pids []int32, pgid string, containerName string) []string {
 	var processStatus []string
+	pgidInt, _ := strconv.Atoi(pgid) // Convert pgid to int once outside the loop
+
 	// Iterate over each process ID
 	for _, pid := range pids {
 		// Create a new Process instance
@@ -550,9 +552,6 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 		if err != nil {
 			continue
 		}
-
-		// convert pgid to int
-		pgidInt, _ := strconv.Atoi(pgid)
 
 		// Skip the process if it's not in the target process group
 		if processPgid != pgidInt && parentProcessPgid != pgidInt {
