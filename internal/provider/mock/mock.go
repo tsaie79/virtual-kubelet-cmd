@@ -35,7 +35,7 @@ import (
 	"strconv"
 	"os/user"
 	"sync"
-	"io/ioutil"
+	"bufio"
 )
 
 const (
@@ -1126,31 +1126,33 @@ func getUserProcesses() ([]int32, string, error) {
 
 
 func getParentPid(pid int) (int, error) {
-    // Open the /proc/<pid>/stat file
-    file, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
-    if err != nil {
-        return 0, err
-    }
-    defer file.Close()
+	// Open the /proc/<pid>/stat file
+	file, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
 
-    // Read the contents of the file
-    b, err := ioutil.ReadAll(file)
-    if err != nil {
-        return 0, err
-    }
+	scanner := bufio.NewScanner(file)
+	scanner.Split(bufio.ScanWords)
 
-    // The contents of the file are space-separated values
-    // The fourth value is the parent process ID (ppid)
-    fields := strings.Fields(string(b))
-    if len(fields) < 4 {
-        return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
-    }
+	// Skip the first three fields
+	for i := 0; i < 3; i++ {
+		if !scanner.Scan() {
+			return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
+		}
+	}
 
-    // Convert the ppid to an integer
-    ppid, err := strconv.Atoi(fields[3])
-    if err != nil {
-        return 0, err
-    }
+	// The fourth field is the parent process ID (ppid)
+	if !scanner.Scan() {
+		return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
+	}
 
-    return ppid, nil
+	// Convert the ppid to an integer
+	ppid, err := strconv.Atoi(scanner.Text())
+	if err != nil {
+		return 0, err
+	}
+
+	return ppid, nil
 }
