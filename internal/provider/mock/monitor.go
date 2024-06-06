@@ -257,13 +257,13 @@ func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float
 		}
 
 		// Get parent process ID
-		ppid, err := getParentPid(int(pid))
+		ppid, err := p.Ppid()
 		if err != nil {
 			continue
 		}
 
 		// Get the process group ID (pgid) of the parent process
-		parentProcessPgid, err := syscall.Getpgid(ppid)
+		parentProcessPgid, err := syscall.Getpgid(int(ppid))
 		if err != nil {
 			continue
 		}
@@ -541,13 +541,13 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 		}
 
 		// Get parent process ID
-		ppid, err := getParentPid(int(pid))
+		ppid, err := p.Ppid()
 		if err != nil {
 			continue
 		}
 
 		// Get the process group ID (pgid) of the parent process
-		parentProcessPgid, err := syscall.Getpgid(ppid)
+		parentProcessPgid, err := syscall.Getpgid(int(ppid))
 		if err != nil {
 			continue
 		}
