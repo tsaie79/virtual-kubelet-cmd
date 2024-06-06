@@ -35,7 +35,6 @@ import (
 	"strconv"
 	"os/user"
 	"sync"
-	"bufio"
 )
 
 const (
@@ -398,14 +397,14 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Get the parent process ID (ppid) of the process
-					ppid, err := getParentPid(pid)
+					ppid, err := getParentPid(int32(pid))
 					if err != nil {
 						errCh <- fmt.Errorf("failed to get ppid: %w", err)
 						return
 					}
 
 					// Get the process group ID (pgid) of the parent process
-					ppgid, err := syscall.Getpgid(ppid)
+					ppgid, err := syscall.Getpgid(int(ppid))
 					if err != nil {
 						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
 						return
@@ -452,14 +451,14 @@ func (p *MockProvider) deletePod(ctx context.Context, pod *v1.Pod) error {
 					}
 
 					// Get the parent process ID (ppid) of the process
-					ppid, err := getParentPid(pid)
+					ppid, err := getParentPid(int32(pid))
 					if err != nil {
 						errCh <- fmt.Errorf("failed to get ppid: %w", err)
 						return
 					}
 
 					// Get the process group ID (pgid) of the parent process
-					ppgid, err := syscall.Getpgid(ppid)
+					ppgid, err := syscall.Getpgid(int(ppid))
 					if err != nil {
 						errCh <- fmt.Errorf("failed to get parent's pgid: %w", err)
 						return
@@ -1125,31 +1124,14 @@ func getUserProcesses() ([]int32, string, error) {
 }
 
 
-func getParentPid(pid int) (int, error) {
-	// Open the /proc/<pid>/stat file
-	file, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+
+func getParentPid(pid int32) (int32, error) {
+	proc, err := process.NewProcess(pid)
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanWords)
-
-	// Skip the first three fields
-	for i := 0; i < 3; i++ {
-		if !scanner.Scan() {
-			return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
-		}
-	}
-
-	// The fourth field is the parent process ID (ppid)
-	if !scanner.Scan() {
-		return 0, fmt.Errorf("could not parse /proc/%d/stat", pid)
-	}
-
-	// Convert the ppid to an integer
-	ppid, err := strconv.Atoi(scanner.Text())
+	ppid, err := proc.Ppid()
 	if err != nil {
 		return 0, err
 	}
