@@ -257,13 +257,13 @@ func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float
 		}
 
 		// Get parent process ID
-		ppid, err := getParentPid(int(pid))
+		ppid, err := p.Ppid()
 		if err != nil {
 			continue
 		}
 
 		// Get the process group ID (pgid) of the parent process
-		parentProcessPgid, err := syscall.Getpgid(ppid)
+		parentProcessPgid, err := syscall.Getpgid(int(ppid))
 		if err != nil {
 			continue
 		}
@@ -541,33 +541,33 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 		}
 
 		// Get parent process ID
-		ppid, err := getParentPid(int(pid))
+		ppid, err := p.Ppid()
 		if err != nil {
 			continue
 		}
 
 		// Get the process group ID (pgid) of the parent process
-		parentProcessPgid, err := syscall.Getpgid(ppid)
+		parentProcessPgid, err := syscall.Getpgid(int(ppid))
 		if err != nil {
 			continue
 		}
 
 		// convert pgid to int
-		pgid, _ := strconv.Atoi(pgid)
+		pgidInt, _ := strconv.Atoi(pgid)
 
 		// Skip the process if it's not in the target process group
-		if processPgid != pgid && parentProcessPgid != pgid {
+		if processPgid != pgidInt && parentProcessPgid != pgidInt {
 			continue
 		}
 
 		cmd, err := p.Cmdline()
 		if err != nil {
-			log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd}).Error("Process status")
+			log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgidInt, "container": containerName, "cmd": cmd}).Error("Process status")
 			continue
 		}
 		status, _ := p.Status()
 		processStatus = append(processStatus, status)
-		log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgid, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
+		log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgidInt, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
 	}
 	return processStatus
 }
