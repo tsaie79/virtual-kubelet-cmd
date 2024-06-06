@@ -989,13 +989,13 @@ func (p *MockProvider) NotifyPods(ctx context.Context, notifier func(*v1.Pod)) {
 }
 
 func (p *MockProvider) statusLoop(ctx context.Context) {
-	t := time.NewTimer(5 * time.Second)
+	t := time.NewTimer(15 * time.Second)
 	if !t.Stop() {
 		<-t.C
 	}
 
 	for {
-		t.Reset(5 * time.Second)
+		t.Reset(15 * time.Second)
 		select {
 		case <-ctx.Done():
 			return
@@ -1082,46 +1082,46 @@ func getContainerStatus(pod *v1.Pod, containerName string) *v1.ContainerStatus {
 
 
 func getUserProcesses() ([]int32, string, error) {
-    // Get the current user
-    currentUser, err := user.Current()
-    if err != nil {
-        return nil, "", fmt.Errorf("Failed to get current user: %v", err)
-    }
+	// Get the current user
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get current user: %v", err)
+	}
 
-    // Get the username of the current user
-    username := currentUser.Username
+	// Get the username of the current user
+	username := currentUser.Username
 
-    // Get a list of all process IDs
-    pids, err := process.Pids()
-    if err != nil {
-        return nil, username, fmt.Errorf("Failed to get process IDs: %v", err)
-    }
+	// Get a list of all process IDs
+	pids, err := process.Pids()
+	if err != nil {
+		return nil, username, fmt.Errorf("failed to get process IDs: %v", err)
+	}
 
-    userPids := []int32{}
+	userPids := make([]int32, 0, len(pids)) // Preallocate slice with capacity
 
-    // Iterate over each process ID
-    for _, pid := range pids {
-        // Create a new process instance
-        proc, err := process.NewProcess(pid)
-        if err != nil {
-            fmt.Println("Failed to get process", pid, ":", err)
-            continue
-        }
+	// Iterate over each process ID
+	for _, pid := range pids {
+		// Create a new process instance
+		proc, err := process.NewProcess(pid)
+		if err != nil {
+			fmt.Println("Failed to get process", pid, ":", err)
+			continue
+		}
 
-        // Get the username of the process
-        procUsername, err := proc.Username()
-        if err != nil {
-            fmt.Println("Failed to get process username:", err)
-            continue
-        }
+		// Get the username of the process
+		procUsername, err := proc.Username()
+		if err != nil {
+			fmt.Println("Failed to get process username:", err)
+			continue
+		}
 
-        // If the process username matches the current user's username, then the process belongs to the current user
-        if procUsername == username {
-            userPids = append(userPids, pid)
-        }
-    }
+		// If the process username matches the current user's username, then the process belongs to the current user
+		if procUsername == username {
+			userPids = append(userPids, pid)
+		}
+	}
 
-    return userPids, username, nil
+	return userPids, username, nil
 }
 
 
