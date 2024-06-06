@@ -3,7 +3,6 @@ package mock
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -105,7 +104,7 @@ func (p *MockProvider) generatePodMetrics(ctx context.Context, pod *v1.Pod, metr
 		memoryValue += rss
 	}
 
-	log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue)}).Info("Pod status")
+	// log.G(context.Background()).WithFields(log.Fields{"pod": pod.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue)}).Info("Pod status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -164,7 +163,7 @@ func (p *MockProvider) generateContainerMetrics(ctx context.Context, c *v1.Conta
 	cpuValue = userTime + systemTime + cpuValue
 	memoryValue = rss + memoryValue
 
-	log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue)}).Info("Container status")
+	// log.G(ctx).WithFields(log.Fields{"container": c.Name, "cpuValue": fmt.Sprintf("%.2f", cpuValue), "memoryValue": fmt.Sprintf("%.2f", memoryValue), "memoryValueMB": fmt.Sprintf("%.2f", memoryValue)}).Info("Container status")
 
 	// Initialize metrics map if nil
 	if metricsMap == nil {
@@ -313,7 +312,7 @@ func getPgidFromPgidFile(pgidFilePath string) (int, error) {
 	}
 
 	// Log the pgid
-	log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgid": pgid}).Info("Container status")
+	// log.G(context.Background()).WithFields(log.Fields{"pgidFilePath": pgidFilePath, "pgid": pgid}).Info("Container status")
 
 	return pgid, nil
 }
@@ -567,7 +566,7 @@ func getProcessStatus(pids []int32, pgid string, containerName string) []string 
 		}
 		status, _ := p.Status()
 		processStatus = append(processStatus, status)
-		log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgidInt, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
+		// log.G(context.Background()).WithFields(log.Fields{"pid": pid, "ppid": ppid, "pgid": processPgid, "parentProcessPgid": parentProcessPgid, "containerID": pgidInt, "container": containerName, "cmd": cmd, "status": status}).Info("Process status")
 	}
 	return processStatus
 }
