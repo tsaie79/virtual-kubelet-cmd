@@ -236,7 +236,8 @@ func getNodeStats() (totalUserTime float64, totalSystemTime float64, totalCPUTim
 // getProcessesMetrics calculates and returns the total user time, total system time, total RSS, and total VMS for all processes in a process group.
 func getProcessesMetrics(pgid int) (totalUserTime float64, totalSystemTime float64, totalRSS float64, totalVMS float64, err error) {
 	// Get the list of all process IDs
-	pids, err := process.Pids()
+	// pids, err := process.Pids()
+	pids, _, err := getUserProcesses()
 	if err != nil {
 		return
 	}
@@ -455,7 +456,8 @@ func createContainerStatusFromProcessStatus(c *v1.Container, prevContainerStateS
 	}
 
 	// Get the process IDs (pids)
-	pids, err := process.Pids()
+	// pids, err := process.Pids()
+	pids, _, err := getUserProcesses()
 	if err != nil {
 		log.G(context.Background()).WithFields(log.Fields{"container": c.Name, "pgidFile": pgidFile, "message": "Error getting pids", "error": err}).Error("Container status")
 		containerState := &v1.ContainerState{
