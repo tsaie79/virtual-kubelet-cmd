@@ -33,6 +33,7 @@ import (
 	logruslogger "github.com/virtual-kubelet/virtual-kubelet/log/logrus"
 	"github.com/virtual-kubelet/virtual-kubelet/trace"
 	"github.com/virtual-kubelet/virtual-kubelet/trace/opencensus"
+	"runtime"
 )
 
 var (
@@ -42,6 +43,7 @@ var (
 )
 
 func main() {
+	runtime.GOMAXPROCS(1)
 	ctx, cancel := context.WithCancel(context.Background())
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
